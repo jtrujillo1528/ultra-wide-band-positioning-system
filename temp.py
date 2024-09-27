@@ -47,50 +47,59 @@ def init(pan_id, src_addr):
     )
 
 def receive_times(sequence):
-    global t_1, r_4, success_times
+    global success_times, t_1, r_4, message
 
     success_times = False
+    t_1 = None
+    r_4 = None
 
     def handle_interrupt_times(pin):
-        global success_times
+        global success_times, t_1, r_4, message
 
-        message = bytearray(dwmCom.read_register_intuitive(0x11,18))
+        message = bytearray(dwmCom.read_register_intuitive(0x11, 28))  # Increased length to accommodate timestamps
         sequence_received = message[15]
 
         if sequence_received == sequence:
-            print(message[5])
             success_times = True
             led.toggle()
+            print('break out')
 
     irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
 
     count = 0
-
     while success_times == False and count <= 800:
-        last_time = time.ticks_ms()
         dwmCom.search()
         time.sleep_ms(5)
         count += 1
+    
+        # Parse the timestamps
+    payload = message[16:]  # The payload starts after the 16-byte header
+    print(payload)
+    if len(payload) >= 11 and payload[0] == 74 and payload[-1] == 78:  # Check for start and end markers
+        tx_end = payload.index(72)  # Find the marker for RX timestamp
+        t_1 = int.from_bytes(payload[1:tx_end], 'big')
+        r_4 = int.from_bytes(payload[tx_end+1:-1], 'big')
+        
+        print(f"Received t_1: {t_1}")
+        print(f"Received r_4: {r_4}")
 
-    return success_times
-
+    return success_times, t_1, r_4
 
 
 def timestamp_and_respond():
-    global rx_timestamp, tx_timestamp, success_tr, sequence
+    global r_3, t_2, success_tr, sequence
 
     dwmCom.init_ack_timing(ack_time=6)
     dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-    #set irq to message send
     dwmCom.write_register(0x0E,b'\x80\x00\x00\x00')
 
     success_tr = False
 
     def handle_interrupt_tr(pin):
-        global rx_timestamp, tx_timestamp, success_tr, sequence
+        global r_3, t_2, success_tr, sequence
 
-        rx_timestamp = dwmCom.get_rx_timestamp()
-        tx_timestamp = dwmCom.get_tx_timestamp()
+        r_3 = dwmCom.get_rx_timestamp()
+        t_2 = dwmCom.get_tx_timestamp()
 
         message = bytearray(dwmCom.read_register_intuitive(0x11,18))
         
@@ -104,22 +113,29 @@ def timestamp_and_respond():
 
     count = 0
 
-    while success_tr == False and count <= 800:
+    while not success_tr and count <= 800:
         dwmCom.search()
         time.sleep_ms(5)
         count += 1
 
-    if success_tr == True:
-        result = receive_times(sequence)
+    if success_tr:
+        success_times, t_1, r_4 = receive_times(sequence)
+        return success_times, r_3, t_2, t_1, r_4
 
-    return result
-
+    return False, None, None, None, None
 
 def main():
     init(PAN_ID, SRC_ADDR)
 
-    isResponse = timestamp_and_respond()
+    success, r_3, t_2, t_1, r_4 = timestamp_and_respond()
 
-    print(isResponse)
+    if success:
+        print(f"Success! Received timestamps:")
+        print(f"t_1: {t_1}")
+        print(f"r_4: {r_4}")
+        print(f"Local rx_timestamp: {r_3}")
+        print(f"Local tx_timestamp: {t_2}")
+    else:
+        print("Failed to receive timestamps")
     
 main()

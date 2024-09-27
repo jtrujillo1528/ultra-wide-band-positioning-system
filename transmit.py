@@ -10,16 +10,6 @@ irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 PAN_ID = 0xB34A  # Example PAN ID
 SRC_ADDR = 0x5678 #update for src
 
-'''def handle_interrupt(pin):
-    #time.sleep(0.1)
-    print(f"sent: {dwmCom.get_tx_timestamp()}")
-    print(f"received: {dwmCom.get_rx_timestamp()}")
-    temp = bytearray(dwmCom.read_register_intuitive(0x11,5))
-    print(temp[2])
-    led.toggle()  # Toggle LED to visually indicate transmission
-
-irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)'''
-
 def int_to_bytes(n, byteorder='big'):
     # Handle zero explicitly
     if n == 0:
