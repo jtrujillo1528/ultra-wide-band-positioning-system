@@ -1,7 +1,7 @@
 import dwmCom
 from machine import Pin
 import time
-import random
+from random import randint
 
 led = Pin("LED", Pin.OUT)
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
@@ -39,15 +39,15 @@ def int_to_bytes(n, byteorder='big'):
 
     return bytes(result)
 
-def twr(dest_addr, sequence_num):
+def twr(pan_id, src_addr, dest_addr, sequence_num):
     global success
     dwmCom.format_message_mac(
         frame_type=1,  # 1 for Data
         seq_num=sequence_num,
-        dest_pan_id=PAN_ID,
+        dest_pan_id=pan_id,
         dest_addr= dest_addr, #update for addr
-        src_pan_id=PAN_ID,
-        src_addr=SRC_ADDR,
+        src_pan_id=pan_id,
+        src_addr=src_addr,
         payload='hello',
         security_enabled=False,
         frame_pending=False,
@@ -56,11 +56,12 @@ def twr(dest_addr, sequence_num):
     )
 
     dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
+
     dwmCom.write_register(0x0E,b'\x00\x40\x00\x00')
 
     success = False
 
-    def handle_interrupt(pin):
+    def handle_interrupt_twr(pin):
         global tx_time, rx_time, success
         time.sleep(0.1)
         tx_time = dwmCom.get_tx_timestamp()
@@ -71,15 +72,21 @@ def twr(dest_addr, sequence_num):
             success = True
             led.toggle()  # Toggle LED to visually indicate transmission
 
-    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)
+    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_twr)
     attempts = 0
     while success == False and attempts <= 3:
         dwmCom.transmit_and_wait()
         time.sleep(0.05)
         attempts +=1
-    return success
+    time_sent = False
+    if success == True:
+        print(tx_time)
+        print(rx_time)
+        time_sent = send_times(tx_time, rx_time, dest_addr,sequence_num, src_addr, pan_id)
+    return time_sent
 
-def send_times(tx, rx, dest_addr, sequence_num):
+def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
+    global times_success
     message = bytearray()
     tx_bytes = int_to_bytes(tx)
     rx_bytes = int_to_bytes(rx)
@@ -91,24 +98,40 @@ def send_times(tx, rx, dest_addr, sequence_num):
     dwmCom.format_message_mac(
         frame_type=1,  # 1 for Data
         seq_num=sequence_num,
-        dest_pan_id=PAN_ID,
+        dest_pan_id=pan_id,
         dest_addr= dest_addr, #update for addr
-        src_pan_id=PAN_ID,
-        src_addr=SRC_ADDR,
+        src_pan_id=pan_id,
+        src_addr=src_addr,
         payload=message,
         security_enabled=False,
         frame_pending=False,
         ack_request=True,
         pan_id_compress=False
-)
+    )
+    def handle_interrupt_times(pin):
+        global tx_time, rx_time, times_success
+        time.sleep(0.1)
+        message = bytearray(dwmCom.read_register_intuitive(0x11,5))
+        sequence = message[2]
+        if sequence == sequence_num:
+            times_success = True
+            led.toggle()  # Toggle LED to visually indicate transmission
+    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
+    times_success = False
+    attempts_times = 0
+    while times_success == False and attempts_times <= 3:
+        dwmCom.transmit_and_wait()
+        time.sleep(0.05)
+        attempts_times +=1
+    return times_success
 
-if __name__ == "__main__":
+def init(pan_id, src_addr):
     dwmCom.reset()
     dwmCom.setup_radio()
     dwmCom.lde_load()
     dwmCom.init_frame_control(
-        pan_id=PAN_ID,
-        device_address=SRC_ADDR,
+        pan_id=pan_id,
+        device_address=src_addr,
         enable_beacon=True,
         enable_data=True,
         enable_ack=True,
@@ -116,8 +139,18 @@ if __name__ == "__main__":
         is_coordinator=False,
         enable_reserved=False
     )
-    num = random.randint(0,255)
-    result = twr(0x1234,num)
-    if result == True:
-        send_times(tx_time, rx_time, 0x1234,num)
+def twr_transmit(pan_id, src_addr, dest_addr, sequence_num):
+    twr_result = twr(pan_id, src_addr, dest_addr, sequence_num)
+    return twr_result
+
+if __name__ == "__main__":
+    init(PAN_ID, 0x1234)
+    while True:
+        num = randint(0,255)
+        result = twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
+        print(result)
+        if result == False:
+            init(PAN_ID, 0x1234)
+        time.sleep(2)
+
 
