@@ -135,12 +135,11 @@ def twr_transmit(pan_id, src_addr, dest_addr, sequence_num):
 
 if __name__ == "__main__":
     init(PAN_ID, 0x1234)
-    while True:
-        num = randint(0,255)
-        result = twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
-        print(result)
-        if result == False:
-            init(PAN_ID, 0x1234)
-        time.sleep(2)
+    num = randint(0,255)
+    result = twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
+    print(result)
+    if result == False:
+        init(PAN_ID, 0x1234)
+    time.sleep(2)
 
 

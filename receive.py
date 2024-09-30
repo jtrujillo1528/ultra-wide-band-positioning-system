@@ -47,18 +47,18 @@ def init(pan_id, src_addr):
     )
 
 def receive_times(sequence):
-    global t_1, r_4, success_times
+    global t_1, r_4, success_times, times_message
 
     success_times = False
 
     def handle_interrupt_times(pin):
-        global success_times
-
-        message = bytearray(dwmCom.read_register_intuitive(0x11,18))
-        sequence_received = message[15]
+        global success_times, times_message
+        print("times triggered")
+        times_message = bytearray(dwmCom.read_register_intuitive(0x11,18))
+        sequence_received = times_message[15]
 
         if sequence_received == sequence:
-            print(message[5])
+            print("times received")
             success_times = True
             led.toggle()
 
@@ -66,7 +66,7 @@ def receive_times(sequence):
 
     count = 0
 
-    while success_times == False and count <= 800:
+    while success_times == False and count <= 200:
         last_time = time.ticks_ms()
         dwmCom.search()
         time.sleep_ms(5)
@@ -76,8 +76,8 @@ def receive_times(sequence):
 
 
 
-def timestamp_and_respond():
-    global rx_timestamp, tx_timestamp, success_tr, sequence
+def request_respond():
+    global rx_timestamp, tx_timestamp, success_tr, sequence, times_message
 
     dwmCom.init_ack_timing(ack_time=6)
     dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
@@ -89,6 +89,7 @@ def timestamp_and_respond():
     def handle_interrupt_tr(pin):
         global rx_timestamp, tx_timestamp, success_tr, sequence
 
+        print("request received")
         rx_timestamp = dwmCom.get_rx_timestamp()
         tx_timestamp = dwmCom.get_tx_timestamp()
 
@@ -98,28 +99,46 @@ def timestamp_and_respond():
 
         success_tr = True
 
-        led.toggle()
+        #led.toggle()
 
     irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_tr)
 
     count = 0
 
-    while success_tr == False and count <= 800:
+    while success_tr == False and count <= 200:
         dwmCom.search()
         time.sleep_ms(5)
         count += 1
 
     if success_tr == True:
         result = receive_times(sequence)
+        return result
+    
+    return False
 
-    return result
+def get_times(message):
+    payload = message[2:]  # The payload starts after the 16-byte header
+    print(payload.hex())
+    if len(payload) >= 11 and payload[0] == 74 and payload[-1] == 78:  # Check for start and end markers
+        tx_end = payload.index(72)  # Find the marker for RX timestamp
+        t_1 = int.from_bytes(payload[1:tx_end], 'big')
+        r_4 = int.from_bytes(payload[tx_end+1:-1], 'big')
+        
+        print(f"Received t_1: {t_1}")
+        print(f"Received r_4: {r_4}")
 
+        return t_1, r_4
+    return None, None
 
-def main():
+if __name__ == "__main__":
+    global message
+
     init(PAN_ID, SRC_ADDR)
 
-    isResponse = timestamp_and_respond()
-
-    print(isResponse)
-    
-main()
+    print("searching")
+    while True:
+        isResponse = request_respond()
+        if isResponse == True:
+            print(times_message)
+            t_1, r_4 = get_times(times_message)
+        time.sleep_us(50)
