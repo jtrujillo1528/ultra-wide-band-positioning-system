@@ -126,8 +126,7 @@ def get_distance(message):
     return distance
 
 if __name__ == "__main__":
-    global message
-
+    
     init(PAN_ID, SRC_ADDR)
 
     print("searching")
