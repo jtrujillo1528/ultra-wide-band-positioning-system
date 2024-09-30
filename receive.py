@@ -136,9 +136,5 @@ if __name__ == "__main__":
         if isResponse == True:
             print(times_message.hex())
             distance = get_distance(times_message)
-            print(f"t1: {t_1}")
-            print(f"r2: {r_2}")
-            print(f"t3: {t_3}")
-            print(f"r4: {r_4}")
             print(f"distance(m): {distance}")
         time.sleep_us(50)
