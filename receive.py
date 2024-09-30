@@ -9,6 +9,9 @@ irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 PAN_ID = 0xB34A  # Example PAN ID
 SRC_ADDR = 0x1234
 
+SPEED_OF_LIGHT = 299702547 #m/s
+UNIT_CONVERSION = 1.565*(10**-11) #s
+
 def bytes_to_int(b, byteorder='big'):
     n = 0
     if byteorder == 'big':
@@ -41,7 +44,7 @@ def init(pan_id, src_addr):
     )
 
 def receive_times(sequence):
-    global t_1, r_4, success_times, times_message
+    global success_times, times_message
 
     success_times = False
 
@@ -70,7 +73,7 @@ def receive_times(sequence):
 
 
 def request_respond():
-    global rx_timestamp, tx_timestamp, success_tr, sequence, times_message
+    global r_2, t_3, success_tr, sequence, times_message
 
     dwmCom.init_ack_timing(ack_time=6)
     dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
@@ -80,10 +83,10 @@ def request_respond():
     success_tr = False
 
     def handle_interrupt_tr(pin):
-        global rx_timestamp, tx_timestamp, success_tr, sequence
+        global r_2, t_3, success_tr, sequence
 
-        rx_timestamp = dwmCom.get_rx_timestamp()
-        tx_timestamp = dwmCom.get_tx_timestamp()
+        r_2 = dwmCom.get_rx_timestamp()
+        t_3 = dwmCom.get_tx_timestamp()
 
         message = bytearray(dwmCom.read_register_intuitive(0x11,18))
         
@@ -108,11 +111,19 @@ def request_respond():
     
     return False
 
-def get_times(message):
-
+def get_distance(message):
+    global t_1, r_2, t_3, r_4
     r_4 = int(message[2:7].hex(),16) # The payload starts after the 16-byte header
     t_1 = int(message[7:12].hex(),16)
-    return t_1, r_4
+
+    t1 = r_4 - t_1
+
+    t2 = t_3 - r_2
+
+    tof = (t1 - t2)/2
+
+    distance = tof * UNIT_CONVERSION * SPEED_OF_LIGHT
+    return distance
 
 if __name__ == "__main__":
     global message
@@ -124,7 +135,10 @@ if __name__ == "__main__":
         isResponse = request_respond()
         if isResponse == True:
             print(times_message.hex())
-            t_1, r_4 = get_times(times_message)
+            distance = get_distance(times_message)
             print(f"t1: {t_1}")
+            print(f"r2: {r_2}")
+            print(f"t3: {t_3}")
             print(f"r4: {r_4}")
+            print(f"distance(m): {distance}")
         time.sleep_us(50)
