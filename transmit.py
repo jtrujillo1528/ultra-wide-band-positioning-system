@@ -53,7 +53,6 @@ def twr(pan_id, src_addr, dest_addr, sequence_num):
 
     def handle_interrupt_twr(pin):
         global tx_time, rx_time, success
-        time.sleep(0.1)
         tx_time = dwmCom.get_tx_timestamp()
         rx_time = dwmCom.get_rx_timestamp()
         message = bytearray(dwmCom.read_register_intuitive(0x11,5))
@@ -64,27 +63,30 @@ def twr(pan_id, src_addr, dest_addr, sequence_num):
 
     irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_twr)
     attempts = 0
-    while success == False and attempts <= 3:
+    while success == False and attempts <= 5:
         dwmCom.transmit_and_wait()
-        time.sleep(0.05)
+        time.sleep_ms(1)
         attempts +=1
     time_sent = False
     if success == True:
-        print(tx_time)
-        print(rx_time)
         time_sent = send_times(tx_time, rx_time, dest_addr,sequence_num, src_addr, pan_id)
     return time_sent
 
 def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
     global times_success
     message = bytearray()
-    tx_bytes = int_to_bytes(tx)
-    rx_bytes = int_to_bytes(rx)
-    message.extend(bytes([74]))
-    message.extend(tx_bytes)
-    message.extend(bytes([72]))
+    message = bytearray()
+    
+    # Format tx timestamp (5 bytes)
+    tx_bytes = int_to_bytes(tx, byteorder='little')
+    tx_bytes = tx_bytes + (b'\x00' * (5 - len(tx_bytes)))  # Pad with zeros if less than 5 bytes
+    message.extend(tx_bytes)  
+    
+    # Format rx timestamp (5 bytes)
+    rx_bytes = int_to_bytes(rx, byteorder='little')
+    rx_bytes = rx_bytes + (b'\x00' * (5 - len(rx_bytes)))  # Pad with zeros if less than 5 bytes
     message.extend(rx_bytes)
-    message.extend(bytes([78]))
+
     dwmCom.format_message_mac(
         frame_type=1,  # 1 for Data
         seq_num=sequence_num,
@@ -99,8 +101,7 @@ def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
         pan_id_compress=False
     )
     def handle_interrupt_times(pin):
-        global tx_time, rx_time, times_success
-        time.sleep(0.1)
+        global times_success
         message = bytearray(dwmCom.read_register_intuitive(0x11,5))
         sequence = message[2]
         if sequence == sequence_num:
@@ -109,10 +110,11 @@ def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
     irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
     times_success = False
     attempts_times = 0
-    while times_success == False and attempts_times <= 3:
+    while times_success == False and attempts_times <= 5:
         dwmCom.transmit_and_wait()
-        time.sleep(0.05)
+        time.sleep_ms(1)
         attempts_times +=1
+
     return times_success
 
 def init(pan_id, src_addr):

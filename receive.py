@@ -9,12 +9,6 @@ irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 PAN_ID = 0xB34A  # Example PAN ID
 SRC_ADDR = 0x1234
 
-def handle_interrupt(pin):
-    print(f"received: {dwmCom.get_rx_timestamp()}")
-    print(f"sent: {dwmCom.get_tx_timestamp()}")
-    led.toggle()
-    #time.sleep_ms(1000)
-
 def bytes_to_int(b, byteorder='big'):
     n = 0
     if byteorder == 'big':
@@ -53,12 +47,11 @@ def receive_times(sequence):
 
     def handle_interrupt_times(pin):
         global success_times, times_message
-        print("times triggered")
-        times_message = bytearray(dwmCom.read_register_intuitive(0x11,18))
-        sequence_received = times_message[15]
+        times_message = bytearray(dwmCom.read_register_intuitive(0x11,23))
+        
+        sequence_received = times_message[20]
 
         if sequence_received == sequence:
-            print("times received")
             success_times = True
             led.toggle()
 
@@ -89,7 +82,6 @@ def request_respond():
     def handle_interrupt_tr(pin):
         global rx_timestamp, tx_timestamp, success_tr, sequence
 
-        print("request received")
         rx_timestamp = dwmCom.get_rx_timestamp()
         tx_timestamp = dwmCom.get_tx_timestamp()
 
@@ -117,18 +109,10 @@ def request_respond():
     return False
 
 def get_times(message):
-    payload = message[2:]  # The payload starts after the 16-byte header
-    print(payload.hex())
-    if len(payload) >= 11 and payload[0] == 74 and payload[-1] == 78:  # Check for start and end markers
-        tx_end = payload.index(72)  # Find the marker for RX timestamp
-        t_1 = int.from_bytes(payload[1:tx_end], 'big')
-        r_4 = int.from_bytes(payload[tx_end+1:-1], 'big')
-        
-        print(f"Received t_1: {t_1}")
-        print(f"Received r_4: {r_4}")
 
-        return t_1, r_4
-    return None, None
+    r_4 = int(message[2:7].hex(),16) # The payload starts after the 16-byte header
+    t_1 = int(message[7:12].hex(),16)
+    return t_1, r_4
 
 if __name__ == "__main__":
     global message
@@ -139,6 +123,8 @@ if __name__ == "__main__":
     while True:
         isResponse = request_respond()
         if isResponse == True:
-            print(times_message)
+            print(times_message.hex())
             t_1, r_4 = get_times(times_message)
+            print(f"t1: {t_1}")
+            print(f"r4: {r_4}")
         time.sleep_us(50)
