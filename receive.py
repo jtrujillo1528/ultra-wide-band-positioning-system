@@ -12,6 +12,7 @@ SRC_ADDR = 0x1234
 
 SPEED_OF_LIGHT = 299702547 #m/s
 UNIT_CONVERSION = 1.565*(10**-11) #s
+DELAY = 65897.62
 
 def bytes_to_int(b, byteorder='big'):
     n = 0
@@ -121,7 +122,7 @@ async def get_distance():
 
     t2 = t_3 - r_2
 
-    tof = (t1 - t2)/2
+    tof = (t1 - t2- DELAY)/2
 
     distance = tof * UNIT_CONVERSION * SPEED_OF_LIGHT
     return distance

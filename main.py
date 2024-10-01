@@ -12,7 +12,7 @@ irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 PAN_ID = 0xB34A  # Example PAN ID
 SRC_ADDR = 0x5678 #update for src
 
-ble = BLEHandler(f"PicoW-{SRC_ADDR}")
+#ble = BLEHandler(f"PicoW-{SRC_ADDR}")
 
 async def main():
     await init(PAN_ID, SRC_ADDR)
@@ -23,7 +23,7 @@ async def main():
         if result == False:
             await init(PAN_ID, 0x1234)
         # Scan for and process other BLE messages
-        ble.scan_and_process()
-        await uasyncio.sleep(1)
+        #ble.scan_and_process()
+        await uasyncio.sleep(0.5)
 
 uasyncio.run(main())

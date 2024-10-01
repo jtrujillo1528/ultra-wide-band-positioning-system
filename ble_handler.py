@@ -61,14 +61,17 @@ class BLEHandler:
             print("Hop count reached zero, not retransmitting")
 
     def scan_callback(self, addr_type, addr, adv_type, rssi, adv_data):
+        print(f"Scan callback - Type: {adv_type}, RSSI: {rssi}, Data: {adv_data.hex()}")
         if adv_type == 0x03 and len(adv_data) > 5:
             mfg_id = struct.unpack("<H", adv_data[5:7])[0]
+            print(f"Manufacturer ID: {mfg_id}")
             if mfg_id == _CUSTOM_MFG_ID:
                 self.scan_result = adv_data[7:].decode()
+                print(f"Decoded data: {self.scan_result}")
 
     def scan_and_process(self):
         self.scan_result = None
-        self.ble.gap_scan(2000, 30000, 30000, True)
+        self.ble.gap_scan(6000, 30000, 30000, True)
         utime.sleep_ms(2000)
         self.ble.gap_scan(None)
 
