@@ -1,141 +1,23 @@
-import dwmCom
-import time
 from machine import Pin
+import time
+from receive import init, twr_response, get_distance, get_calibration_data
 
-led = Pin("LED", Pin.OUT)  # Onboard LED on the Pico W
+led = Pin("LED", Pin.OUT)
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 
 # Example usage
 PAN_ID = 0xB34A  # Example PAN ID
-SRC_ADDR = 0x1234
+SRC_ADDR = 0x1234 #update for src
 
-def handle_interrupt(pin):
-    print(f"received: {dwmCom.get_rx_timestamp()}")
-    print(f"sent: {dwmCom.get_tx_timestamp()}")
-    led.toggle()
-    #time.sleep_ms(1000)
+if __name__ == "__main__":
 
-def bytes_to_int(b, byteorder='big'):
-    n = 0
-    if byteorder == 'big':
-        for byte in b:
-            n = (n << 8) | byte
-    elif byteorder == 'little':
-        reversed_result = []
-        for i in range(len(b) - 1, -1, -1):
-            reversed_result.append(b[i])
-        result = reversed_result
-        for byte in reversed_result:
-            n = (n << 8) | byte
-    else:
-        raise ValueError("byteorder must be either 'big' or 'little'")
-    return n
-
-def init(pan_id, src_addr):
-    dwmCom.reset()
-    dwmCom.setup_radio()
-    dwmCom.lde_load()
-    dwmCom.init_frame_control(
-        pan_id=pan_id,
-        device_address=src_addr,
-        enable_beacon=True,
-        enable_data=True,
-        enable_ack=True,
-        enable_mac_cmd=False,
-        is_coordinator=False,
-        enable_reserved=False
-    )
-
-def receive_times(sequence):
-    global success_times, t_1, r_4, message
-
-    success_times = False
-    t_1 = None
-    r_4 = None
-
-    def handle_interrupt_times(pin):
-        global success_times, t_1, r_4, message
-
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 28))  # Increased length to accommodate timestamps
-        sequence_received = message[15]
-
-        if sequence_received == sequence:
-            success_times = True
-            led.toggle()
-            print('break out')
-
-    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
-
-    count = 0
-    while success_times == False and count <= 800:
-        dwmCom.search()
-        time.sleep_ms(5)
-        count += 1
-    
-        # Parse the timestamps
-    payload = message[16:]  # The payload starts after the 16-byte header
-    print(payload)
-    if len(payload) >= 11 and payload[0] == 74 and payload[-1] == 78:  # Check for start and end markers
-        tx_end = payload.index(72)  # Find the marker for RX timestamp
-        t_1 = int.from_bytes(payload[1:tx_end], 'big')
-        r_4 = int.from_bytes(payload[tx_end+1:-1], 'big')
-        
-        print(f"Received t_1: {t_1}")
-        print(f"Received r_4: {r_4}")
-
-    return success_times, t_1, r_4
-
-
-def timestamp_and_respond():
-    global r_3, t_2, success_tr, sequence
-
-    dwmCom.init_ack_timing(ack_time=6)
-    dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-    dwmCom.write_register(0x0E,b'\x80\x00\x00\x00')
-
-    success_tr = False
-
-    def handle_interrupt_tr(pin):
-        global r_3, t_2, success_tr, sequence
-
-        r_3 = dwmCom.get_rx_timestamp()
-        t_2 = dwmCom.get_tx_timestamp()
-
-        message = bytearray(dwmCom.read_register_intuitive(0x11,18))
-        
-        sequence = message[15]
-
-        success_tr = True
-
-        led.toggle()
-
-    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_tr)
-
-    count = 0
-
-    while not success_tr and count <= 800:
-        dwmCom.search()
-        time.sleep_ms(5)
-        count += 1
-
-    if success_tr:
-        success_times, t_1, r_4 = receive_times(sequence)
-        return success_times, r_3, t_2, t_1, r_4
-
-    return False, None, None, None, None
-
-def main():
     init(PAN_ID, SRC_ADDR)
 
-    success, r_3, t_2, t_1, r_4 = timestamp_and_respond()
-
-    if success:
-        print(f"Success! Received timestamps:")
-        print(f"t_1: {t_1}")
-        print(f"r_4: {r_4}")
-        print(f"Local rx_timestamp: {r_3}")
-        print(f"Local tx_timestamp: {t_2}")
-    else:
-        print("Failed to receive timestamps")
-    
-main()
+    print("searching")
+    while True:
+        isResponse = twr_response()
+        if isResponse == True:
+            t1, t2 = get_calibration_data()
+            print(f"t1: {t1}")
+            print(f"t2: {t2}")
+        time.sleep_us(50)

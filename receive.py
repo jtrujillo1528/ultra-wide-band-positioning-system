@@ -72,7 +72,7 @@ def receive_times(sequence):
 
 
 
-def request_respond():
+def twr_response():
     global r_2, t_3, success_tr, sequence, times_message
 
     dwmCom.init_ack_timing(ack_time=6)
@@ -111,10 +111,11 @@ def request_respond():
     
     return False
 
-def get_distance(message):
-    global t_1, r_2, t_3, r_4
-    r_4 = int(message[2:7].hex(),16) # The payload starts after the 16-byte header
-    t_1 = int(message[7:12].hex(),16)
+def get_distance():
+    global t_1, r_2, t_3, r_4, times_message
+
+    r_4 = int(times_message[2:7].hex(),16) # The payload starts after the 16-byte header
+    t_1 = int(times_message[7:12].hex(),16)
 
     t1 = r_4 - t_1
 
@@ -125,15 +126,25 @@ def get_distance(message):
     distance = tof * UNIT_CONVERSION * SPEED_OF_LIGHT
     return distance
 
+def get_calibration_data():
+    global t_1, r_2, t_3, r_4, times_message
+
+    r_4 = int(times_message[2:7].hex(),16) # The payload starts after the 16-byte header
+    t_1 = int(times_message[7:12].hex(),16)
+
+    t1 = r_4 - t_1
+    t2 = t_3 - r_2
+
+    return t1,t2
+
 if __name__ == "__main__":
-    
+
     init(PAN_ID, SRC_ADDR)
 
     print("searching")
     while True:
-        isResponse = request_respond()
+        isResponse = twr_response()
         if isResponse == True:
-            print(times_message.hex())
-            distance = get_distance(times_message)
+            distance = get_distance()
             print(f"distance(m): {distance}")
         time.sleep_us(50)
