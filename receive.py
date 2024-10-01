@@ -1,6 +1,7 @@
 import dwmCom
 import time
 from machine import Pin
+import uasyncio
 
 led = Pin("LED", Pin.OUT)  # Onboard LED on the Pico W
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
@@ -28,7 +29,7 @@ def bytes_to_int(b, byteorder='big'):
         raise ValueError("byteorder must be either 'big' or 'little'")
     return n
 
-def init(pan_id, src_addr):
+async def init(pan_id, src_addr):
     dwmCom.reset()
     dwmCom.setup_radio()
     dwmCom.lde_load()
@@ -43,7 +44,7 @@ def init(pan_id, src_addr):
         enable_reserved=False
     )
 
-def receive_times(sequence):
+async def receive_times(sequence):
     global success_times, times_message
 
     success_times = False
@@ -63,7 +64,6 @@ def receive_times(sequence):
     count = 0
 
     while success_times == False and count <= 200:
-        last_time = time.ticks_ms()
         dwmCom.search()
         time.sleep_ms(5)
         count += 1
@@ -72,7 +72,7 @@ def receive_times(sequence):
 
 
 
-def twr_response():
+async def twr_response():
     global r_2, t_3, success_tr, sequence, times_message
 
     dwmCom.init_ack_timing(ack_time=6)
@@ -106,12 +106,12 @@ def twr_response():
         count += 1
 
     if success_tr == True:
-        result = receive_times(sequence)
+        result = await receive_times(sequence)
         return result
     
     return False
 
-def get_distance():
+async def get_distance():
     global t_1, r_2, t_3, r_4, times_message
 
     r_4 = int(times_message[2:7].hex(),16) # The payload starts after the 16-byte header
@@ -126,7 +126,7 @@ def get_distance():
     distance = tof * UNIT_CONVERSION * SPEED_OF_LIGHT
     return distance
 
-def get_calibration_data():
+async def get_calibration_data():
     global t_1, r_2, t_3, r_4, times_message
 
     r_4 = int(times_message[2:7].hex(),16) # The payload starts after the 16-byte header
@@ -137,14 +137,17 @@ def get_calibration_data():
 
     return t1,t2
 
-if __name__ == "__main__":
+async def main():
 
-    init(PAN_ID, SRC_ADDR)
+    await init(PAN_ID, SRC_ADDR)
 
     print("searching")
     while True:
-        isResponse = twr_response()
+        isResponse = await twr_response()
         if isResponse == True:
-            distance = get_distance()
+            distance = await get_distance()
             print(f"distance(m): {distance}")
         time.sleep_us(50)
+
+if __name__ == "__main__":
+    uasyncio.run(main()) 

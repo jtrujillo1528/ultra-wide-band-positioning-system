@@ -2,6 +2,7 @@ import dwmCom
 from machine import Pin
 import time
 from random import randint
+import uasyncio
 
 led = Pin("LED", Pin.OUT)
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
@@ -29,7 +30,7 @@ def int_to_bytes(n, byteorder='big'):
 
     return bytes(result)
 
-def twr(pan_id, src_addr, dest_addr, sequence_num):
+async def twr(pan_id, src_addr, dest_addr, sequence_num):
     global success
     dwmCom.format_message_mac(
         frame_type=1,  # 1 for Data
@@ -66,10 +67,10 @@ def twr(pan_id, src_addr, dest_addr, sequence_num):
     time.sleep_ms(1)
     time_sent = False
     if success == True:
-        time_sent = send_times(tx_time, rx_time, dest_addr,sequence_num, src_addr, pan_id)
+        time_sent = await send_times(tx_time, rx_time, dest_addr,sequence_num, src_addr, pan_id)
     return time_sent
 
-def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
+async def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
     global times_success
     message = bytearray()
     message = bytearray()
@@ -112,7 +113,7 @@ def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
 
     return times_success
 
-def init(pan_id, src_addr):
+async def init(pan_id, src_addr):
     dwmCom.reset()
     dwmCom.setup_radio()
     dwmCom.lde_load()
@@ -126,17 +127,19 @@ def init(pan_id, src_addr):
         is_coordinator=False,
         enable_reserved=False
     )
-def twr_transmit(pan_id, src_addr, dest_addr, sequence_num):
-    twr_result = twr(pan_id, src_addr, dest_addr, sequence_num)
+async def twr_transmit(pan_id, src_addr, dest_addr, sequence_num):
+    twr_result = await twr(pan_id, src_addr, dest_addr, sequence_num)
     return twr_result
 
-if __name__ == "__main__":
-    init(PAN_ID, 0x1234)
+async def main():
+    await init(PAN_ID, 0x1234)
     num = randint(0,255)
-    result = twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
+    result = await twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
     print(result)
     if result == False:
-        init(PAN_ID, 0x1234)
+        await init(PAN_ID, 0x1234)
     time.sleep(2)
 
 
+if __name__ == "__main__":
+    uasyncio.run(main())

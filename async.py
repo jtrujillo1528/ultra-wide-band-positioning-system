@@ -1,49 +1,117 @@
 import dwmCom
-import time
 from machine import Pin
+import time
+from random import randint
 import uasyncio
 
-led = Pin("LED", Pin.OUT)  # Onboard LED on the Pico W
+led = Pin("LED", Pin.OUT)
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 
 # Example usage
 PAN_ID = 0xB34A  # Example PAN ID
-SRC_ADDR = 0x1234
+SRC_ADDR = 0x5678 #update for src
 
-SPEED_OF_LIGHT = 299702547 #m/s
-UNIT_CONVERSION = 1.565*(10**-11) #s
+def int_to_bytes(n, byteorder='big'):
+    # Handle zero explicitly
+    if n == 0:
+        return b'\x00'
 
+    result = bytearray()
+    while n > 0:
+        result.append(n & 0xFF)
+        n >>= 8
 
-# Globals for interrupt handling
-twr_response_ready = uasyncio.Event()
-times_received = uasyncio.Event()
-twr_complete = uasyncio.Event()
-times_sent = uasyncio.Event()
+    if byteorder == 'big':
+        # Manually reverse the list for big-endian byte order
+        reversed_result = []
+        for i in range(len(result) - 1, -1, -1):
+            reversed_result.append(result[i])
+        result = reversed_result
 
+    return bytes(result)
 
-# Interrupt handlers
-def handle_interrupt_times(pin):
-    global times_message
+async def twr(pan_id, src_addr, dest_addr, sequence_num):
+    global success
+    dwmCom.format_message_mac(
+        frame_type=1,  # 1 for Data
+        seq_num=sequence_num,
+        dest_pan_id=pan_id,
+        dest_addr= dest_addr, #update for addr
+        src_pan_id=pan_id,
+        src_addr=src_addr,
+        payload='hello',
+        security_enabled=False,
+        frame_pending=False,
+        ack_request=True,
+        pan_id_compress=False
+    )
 
-    print("times message received")
-    times_message = bytearray(dwmCom.read_register_intuitive(0x11,23))
-    times_received.set()
+    dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
 
-def handle_interrupt_tr(pin):
-    global r_2, t_3
+    dwmCom.write_register(0x0E,b'\x00\x40\x00\x00')
 
-    twr_response_ready.set()
-    r_2 = dwmCom.get_rx_timestamp()
-    t_3 = dwmCom.get_tx_timestamp()
-    print(r_2)
-    print(t_3)
+    success = False
+
+    def handle_interrupt_twr(pin):
+        global tx_time, rx_time, success
+        tx_time = dwmCom.get_tx_timestamp()
+        rx_time = dwmCom.get_rx_timestamp()
+        message = bytearray(dwmCom.read_register_intuitive(0x11,5))
+        sequence = message[2]
+        if sequence == sequence_num:
+            success = True
+            led.toggle()  # Toggle LED to visually indicate transmission
+
+    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_twr)
+    dwmCom.transmit_and_wait()
+    time.sleep_ms(1)
+    time_sent = False
+    if success == True:
+        time_sent = await send_times(tx_time, rx_time, dest_addr,sequence_num, src_addr, pan_id)
+    return time_sent
+
+async def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
+    global times_success
+    message = bytearray()
+    message = bytearray()
     
+    # Format tx timestamp (5 bytes)
+    tx_bytes = int_to_bytes(tx, byteorder='little')
+    tx_bytes = tx_bytes + (b'\x00' * (5 - len(tx_bytes)))  # Pad with zeros if less than 5 bytes
+    message.extend(tx_bytes)  
+    
+    # Format rx timestamp (5 bytes)
+    rx_bytes = int_to_bytes(rx, byteorder='little')
+    rx_bytes = rx_bytes + (b'\x00' * (5 - len(rx_bytes)))  # Pad with zeros if less than 5 bytes
+    message.extend(rx_bytes)
 
-def handle_interrupt_twr(pin):
-    global tx_time, rx_time
-    tx_time = dwmCom.get_tx_timestamp()
-    rx_time = dwmCom.get_rx_timestamp()
-    twr_complete.set()
+    dwmCom.format_message_mac(
+        frame_type=1,  # 1 for Data
+        seq_num=sequence_num,
+        dest_pan_id=pan_id,
+        dest_addr= dest_addr, #update for addr
+        src_pan_id=pan_id,
+        src_addr=src_addr,
+        payload=message,
+        security_enabled=False,
+        frame_pending=False,
+        ack_request=True,
+        pan_id_compress=False
+    )
+    def handle_interrupt_times(pin):
+        global times_success
+        message = bytearray(dwmCom.read_register_intuitive(0x11,5))
+        sequence = message[2]
+        if sequence == sequence_num:
+            times_success = True
+            led.toggle()  # Toggle LED to visually indicate transmission
+    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
+    times_success = False
+    dwmCom.transmit_and_wait()
+    time.sleep_ms(1)
+
+
+    return times_success
 
 async def init(pan_id, src_addr):
     dwmCom.reset()
@@ -59,69 +127,19 @@ async def init(pan_id, src_addr):
         is_coordinator=False,
         enable_reserved=False
     )
+async def twr_transmit(pan_id, src_addr, dest_addr, sequence_num):
+    twr_result = await twr(pan_id, src_addr, dest_addr, sequence_num)
+    return twr_result
 
-async def receive_times(sequence):
-    times_received.clear()
-    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
-    dwmCom.search()
-    try:
-        print("wating for times")
-        await uasyncio.wait_for(times_received.wait(), 1.0)
-    except uasyncio.TimeoutError:
-        print("times not received")
-        return False
-    
-    return times_message[20] == sequence
-
-
-
-async def twr_response():
-    global r_2, t_3, sequence
-    dwmCom.init_ack_timing(ack_time=6)
-    dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-    dwmCom.write_register(0x0E,b'\x80\x00\x00\x00')
-    
-    twr_response_ready.clear()
-    irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_tr)
-    dwmCom.search()
-    try:
-        print("searching for message")
-        await uasyncio.wait_for(twr_response_ready.wait(), 1.0)
-    except uasyncio.TimeoutError:
-        print('no message found')
-        return False
-    
-    sequence = dwmCom.read_register_intuitive(0x11,18)[15]
-    return await receive_times(sequence)
-
-async def get_distance():
-    global t_1, r_2, t_3, r_4, times_message
-    r_4 = int(times_message[2:7].hex(),16)
-    t_1 = int(times_message[7:12].hex(),16)
-    t1 = r_4 - t_1
-    t2 = t_3 - r_2
-    tof = (t1 - t2)/2
-    distance = tof * UNIT_CONVERSION * SPEED_OF_LIGHT
-    return distance
-
-async def get_calibration_data():
-    global t_1, r_2, t_3, r_4, times_message
-    r_4 = int(times_message[2:7].hex(),16)
-    t_1 = int(times_message[7:12].hex(),16)
-    t1 = r_4 - t_1
-    t2 = t_3 - r_2
-    return t1, t2
-
-# Main async function
 async def main():
-    await init(PAN_ID, SRC_ADDR)
-    print("searching...")
-    while True:
-        response = await twr_response()
-        if response:
-            distance = await get_distance()
-            print(f"Distance: {distance} m")
-        await uasyncio.sleep(0.05)
+    await init(PAN_ID, 0x1234)
+    num = randint(0,255)
+    result = await twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
+    print(result)
+    if result == False:
+        await init(PAN_ID, 0x1234)
+    time.sleep(2)
 
-# Run the event loop
-uasyncio.run(main())
+
+if __name__ == "__main__":
+    uasyncio.run(main())
