@@ -62,11 +62,8 @@ def twr(pan_id, src_addr, dest_addr, sequence_num):
             led.toggle()  # Toggle LED to visually indicate transmission
 
     irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_twr)
-    attempts = 0
-    while success == False and attempts <= 5:
-        dwmCom.transmit_and_wait()
-        time.sleep_ms(1)
-        attempts +=1
+    dwmCom.transmit_and_wait()
+    time.sleep_ms(1)
     time_sent = False
     if success == True:
         time_sent = send_times(tx_time, rx_time, dest_addr,sequence_num, src_addr, pan_id)
@@ -109,11 +106,9 @@ def send_times(tx, rx, dest_addr, sequence_num, src_addr, pan_id):
             led.toggle()  # Toggle LED to visually indicate transmission
     irq_pin.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt_times)
     times_success = False
-    attempts_times = 0
-    while times_success == False and attempts_times <= 5:
-        dwmCom.transmit_and_wait()
-        time.sleep_ms(1)
-        attempts_times +=1
+    dwmCom.transmit_and_wait()
+    time.sleep_ms(1)
+
 
     return times_success
 

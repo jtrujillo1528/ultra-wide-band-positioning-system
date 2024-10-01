@@ -11,7 +11,7 @@ PAN_ID = 0xB34A  # Example PAN ID
 SRC_ADDR = 0x5678 #update for src
 
 if __name__ == "__main__":
-    init(PAN_ID, 0x1234)
+    init(PAN_ID, SRC_ADDR)
     while True:
         num = randint(0,255)
         result = twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
