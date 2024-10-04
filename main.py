@@ -1,7 +1,6 @@
 from machine import Pin
 import time
 from transmit import init, twr_transmit
-from ble_handler import BLEHandler, create_ble_message
 from random import randint
 import uasyncio
 
@@ -22,8 +21,6 @@ async def main():
         print(result)
         if result == False:
             await init(PAN_ID, 0x1234)
-        # Scan for and process other BLE messages
-        #ble.scan_and_process()
         await uasyncio.sleep(0.5)
 
 uasyncio.run(main())

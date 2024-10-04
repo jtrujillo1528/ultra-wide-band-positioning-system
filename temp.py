@@ -1,7 +1,6 @@
 from machine import Pin
 import time
 from receive import init, twr_response, get_calibration_data, get_distance
-from ble_handler import BLEHandler, create_ble_message
 import uasyncio
 
 led = Pin("LED", Pin.OUT)
@@ -22,15 +21,6 @@ async def main():
         if isResponse == True:
             d = await get_distance()
             print(f"distance: {d}")
-            
-            '''           # Create and send BLE message
-                hop_count = 2  # Set initial hop count
-                twr_src_addr = 0x5678  # This is the address of the device sending TWR data
-                ble_message = create_ble_message(hop_count, t1, t2, SRC_ADDR, twr_src_addr)
-                ble.advertise(ble_message)
-            
-            # Scan for and process other BLE messages
-            ble.scan_and_process()'''
         
         await uasyncio.sleep_ms(50)
 
