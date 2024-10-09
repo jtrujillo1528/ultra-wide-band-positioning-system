@@ -20,7 +20,7 @@ async def main():
         isResponse = await twr_response()
         if isResponse == True:
             d = await get_distance()
-            print(f"distance: {d}")
+            print(f"distance (in): {d/.0254}")
         
         await uasyncio.sleep_ms(50)
 
