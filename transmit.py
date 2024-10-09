@@ -7,10 +7,6 @@ import uasyncio
 led = Pin("LED", Pin.OUT)
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 
-# Example usage
-PAN_ID = 0xB34A  # Example PAN ID
-SRC_ADDR = 0x5678 #update for src
-
 def int_to_bytes(n, byteorder='big'):
     # Handle zero explicitly
     if n == 0:
@@ -131,15 +127,3 @@ async def twr_transmit(pan_id, src_addr, dest_addr, sequence_num):
     twr_result = await twr(pan_id, src_addr, dest_addr, sequence_num)
     return twr_result
 
-async def main():
-    await init(PAN_ID, 0x1234)
-    num = randint(0,255)
-    result = await twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
-    print(result)
-    if result == False:
-        await init(PAN_ID, 0x1234)
-    time.sleep(2)
-
-
-if __name__ == "__main__":
-    uasyncio.run(main())

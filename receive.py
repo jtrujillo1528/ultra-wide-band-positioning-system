@@ -6,10 +6,6 @@ import uasyncio
 led = Pin("LED", Pin.OUT)  # Onboard LED on the Pico W
 irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 
-# Example usage
-PAN_ID = 0xB34A  # Example PAN ID
-SRC_ADDR = 0x1234
-
 SPEED_OF_LIGHT = 299702547 #m/s
 UNIT_CONVERSION = 1.565*(10**-11) #s
 DELAY = 65897.62
@@ -52,7 +48,7 @@ async def receive_times(sequence):
 
     def handle_interrupt_times(pin):
         global success_times, times_message
-        times_message = bytearray(dwmCom.read_register_intuitive(0x11,23))
+        times_message = bytearray(dwmCom.read_register_intuitive(0x11,23))#update with new length
         
         sequence_received = times_message[20]
 
@@ -137,18 +133,3 @@ async def get_calibration_data():
     t2 = t_3 - r_2
 
     return t1,t2
-
-async def main():
-
-    await init(PAN_ID, SRC_ADDR)
-
-    print("searching")
-    while True:
-        isResponse = await twr_response()
-        if isResponse == True:
-            distance = await get_distance()
-            print(f"distance(m): {distance}")
-        time.sleep_us(50)
-
-if __name__ == "__main__":
-    uasyncio.run(main()) 
