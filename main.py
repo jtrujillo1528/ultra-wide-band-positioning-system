@@ -1,6 +1,6 @@
 from machine import Pin
 import time
-from transmit import init, twr_transmit
+from transmit import UWBTransmitter
 from random import randint
 import uasyncio
 
@@ -14,13 +14,24 @@ SRC_ADDR = 0x5678 #update for src
 #ble = BLEHandler(f"PicoW-{SRC_ADDR}")
 
 async def main():
-    await init(PAN_ID, SRC_ADDR)
+    # Example parameters
+    PAN_ID = 0xB34A
+    SRC_ADDR = 0x5678
+    DEST_ADDR = 0x1234
+
+    # Create transmitter instance
+    transmitter = UWBTransmitter()
+    
+    # Initialize
+    await transmitter.init(PAN_ID, SRC_ADDR)
+    
+    # Main loop
     while True:
-        num = randint(0,255)
-        result = await twr_transmit(PAN_ID, SRC_ADDR, 0x1234, num)
+        sequence_num = randint(0, 255)
+        result = await transmitter.twr(PAN_ID, SRC_ADDR, DEST_ADDR, sequence_num)
         print(result)
         if result == False:
-            await init(PAN_ID, 0x1234)
+            await transmitter.init(PAN_ID, DEST_ADDR)
         await uasyncio.sleep(0.5)
 
 uasyncio.run(main())

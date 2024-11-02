@@ -514,7 +514,7 @@ def get_rx_quality():
     std_noise_bytes = read_subregister(0x12,0x00,8,1)
     std_noise = int.from_bytes(std_noise_bytes,'little')
 
-    return fp_amp2, std_noise
+    return fp_amp2/std_noise
 
 def get_tx_timestamp():
     """
@@ -533,3 +533,19 @@ def init_ack_timing(w4r_time=None, ack_time=None):
 
 def init_rx_timeout(time):
     write_register(0x0C,time)
+
+def bytes_to_int(b, byteorder='big'):
+    n = 0
+    if byteorder == 'big':
+        for byte in b:
+            n = (n << 8) | byte
+    elif byteorder == 'little':
+        reversed_result = []
+        for i in range(len(b) - 1, -1, -1):
+            reversed_result.append(b[i])
+        result = reversed_result
+        for byte in reversed_result:
+            n = (n << 8) | byte
+    else:
+        raise ValueError("byteorder must be either 'big' or 'little'")
+    return n
