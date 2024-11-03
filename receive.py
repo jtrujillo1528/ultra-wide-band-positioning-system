@@ -70,10 +70,11 @@ class UWBNode:
 
         message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
         print(message.hex())
-        self.sequence = message[2]
+        self.sequence = message[15]
+        print(hex(self.sequence))
         self.handshake_init = True
-        self.target_addr = hex(int.from_bytes(message[7:9], 'big'))
-        print(self.target_addr)
+        self.target_addr = int.from_bytes(message[7:9], 'big')
+        #print(hex(self.target_addr))
         dwmCom.format_message_mac(
             frame_type=1,
             seq_num=self.sequence,
@@ -81,7 +82,7 @@ class UWBNode:
             dest_addr=self.target_addr,
             src_pan_id=self.pan,
             src_addr=self.id,
-            payload=message,
+            payload='hello',
             security_enabled=False,
             frame_pending=False,
             ack_request=False,

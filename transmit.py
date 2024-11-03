@@ -61,7 +61,7 @@ class UWBTag:
         """Handle interrupt for handshake."""
         message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
         print(message.hex())
-        sequence = message[2]
+        sequence = message[15]
         print(sequence)
         self.target_addr = int.from_bytes(message[7:9], 'big')
         if sequence == self.current_sequence:

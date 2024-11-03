@@ -369,7 +369,7 @@ def format_message_mac(frame_type, seq_num, dest_pan_id, dest_addr, src_pan_id, 
     write_subregister(0x08, 0x00, frame_length, 5, 1)
     # Write message to TX buffer (0x09)
     write_register(0x09, frame)
-    #print(read_register_intuitive(0x09,frame_length).hex())
+    print(read_register_intuitive(0x09,frame_length).hex())
     
     return frame
 def transmit():
