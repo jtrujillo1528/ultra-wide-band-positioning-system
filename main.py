@@ -1,6 +1,6 @@
 from machine import Pin
 import time
-from transmit import UWBTag
+from tag import UWBTag
 from random import randint
 import uasyncio
 

@@ -1,6 +1,6 @@
 from machine import Pin
 import time
-from receive import UWBNode
+from node import UWBNode
 import uasyncio
 
 led = Pin("LED", Pin.OUT)

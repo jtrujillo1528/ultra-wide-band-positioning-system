@@ -1,6 +1,6 @@
 from machine import Pin
 import time
-from receive import init, twr_response, get_calibration_data
+from node import UWBNode
 import uasyncio
 
 led = Pin("LED", Pin.OUT)
@@ -41,14 +41,15 @@ def remove_outliers(data):
 
 
 async def main():
-    await init(PAN_ID, SRC_ADDR)
+    device = UWBNode(PAN_ID,SRC_ADDR)
+    await device.init()
     print("searching")
 
     while len(calibration_data["t1"]) <= 100:
         # Perform TWR and transmit our own message
-        isResponse = await twr_response()
+        isResponse = await device.twr_response()
         if isResponse == True:
-            t1, t2 = await get_calibration_data()
+            t1, t2 = await device.get_calibration_data()
             calibration_data["t1"].append(t1)
             calibration_data["t2"].append(t2)
 
