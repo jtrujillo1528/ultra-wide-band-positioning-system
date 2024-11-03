@@ -3,8 +3,8 @@ import time
 from machine import Pin
 import uasyncio
 
-class UWBReceiver:
-    def __init__(self, led_pin="LED", irq_pin_num=14):
+class UWBNode:
+    def __init__(self, pan, src, led_pin="LED", irq_pin_num=14):
         """
         Initialize the UWB receiver.
         
@@ -26,28 +26,14 @@ class UWBReceiver:
         self.t_1 = 0  # Transmission timestamp 1
         self.r_4 = 0  # Reception timestamp 4
         self.success_tr = False
+        self.handshake_init = False
         self.success_times = False
         self.sequence = None
         self.times_message = bytearray([])
+        self.pan = pan
+        self.id = src
 
-    def bytes_to_int(self, b, byteorder='big'):
-        """Convert bytes to integer with specified byte order."""
-        n = 0
-        if byteorder == 'big':
-            for byte in b:
-                n = (n << 8) | byte
-        elif byteorder == 'little':
-            reversed_result = []
-            for i in range(len(b) - 1, -1, -1):
-                reversed_result.append(b[i])
-            result = reversed_result
-            for byte in reversed_result:
-                n = (n << 8) | byte
-        else:
-            raise ValueError("byteorder must be either 'big' or 'little'")
-        return n
-
-    async def init(self, pan_id, src_addr):
+    async def init(self):
         """
         Initialize the UWB radio with specified PAN ID and source address.
         
@@ -59,8 +45,8 @@ class UWBReceiver:
         dwmCom.setup_radio()
         dwmCom.lde_load()
         dwmCom.init_frame_control(
-            pan_id=pan_id,
-            device_address=src_addr,
+            pan_id=self.pan,
+            device_address=self.id,
             enable_beacon=True,
             enable_data=True,
             enable_ack=True,
@@ -78,6 +64,32 @@ class UWBReceiver:
         print(message.hex())
         self.sequence = message[15]
         self.success_tr = True
+
+    def _handle_interrupt_handshake(self, pin):
+        """Handle interrupt for two-way handshake response."""
+
+        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
+        print(message.hex())
+        self.sequence = message[2]
+        self.handshake_init = True
+        self.target_addr = hex(int.from_bytes(message[7:9], 'big'))
+        print(self.target_addr)
+        dwmCom.format_message_mac(
+            frame_type=1,
+            seq_num=self.sequence,
+            dest_pan_id=self.pan,
+            dest_addr=self.target_addr,
+            src_pan_id=self.pan,
+            src_addr=self.id,
+            payload=message,
+            security_enabled=False,
+            frame_pending=False,
+            ack_request=False,
+            pan_id_compress=False
+        )
+        dwmCom.transmit()
+        time.sleep_ms(1)
+        self.led.toggle()
 
     def _handle_interrupt_times(self, pin):
         """Handle interrupt for timestamp reception."""
@@ -120,7 +132,7 @@ class UWBReceiver:
         """
         dwmCom.init_ack_timing(ack_time=6)
         dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-        dwmCom.write_register(0x0E, b'\x80\x00\x00\x00')
+        dwmCom.set_send_interrupt()
 
         self.success_tr = False
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_tr)
@@ -134,6 +146,32 @@ class UWBReceiver:
         if self.success_tr:
             result = await self.receive_times(self.sequence)
             return result
+        
+        return False
+    
+    async def handshake_response(self):
+        """
+        Perform two-way ranging response.
+        
+        Returns:
+            bool: Success status
+        """
+        dwmCom.init_ack_timing(ack_time=6)
+        dwmCom.init_auto_ack(auto_ack=False, rx_auth=True)
+        #figure out how to send full response
+        dwmCom.set_receive_interrupt()
+
+        self.handshake_init = False
+        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_handshake)
+
+        count = 0
+        while not self.handshake_init and count <= 200:
+            dwmCom.search()
+            await uasyncio.sleep_ms(5)
+            count += 1
+
+        if self.handshake_init:
+            return True
         
         return False
 
@@ -183,8 +221,19 @@ class UWBReceiver:
                 distance = await self.get_distance()
                 if callback:
                     callback(distance)
-                else:
-                    print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
+            await uasyncio.sleep_ms(50)
+
+    async def start_handshake(self, callback=None):
+        """
+        Start continuous ranging measurements with optional callback.
+        
+        Args:
+            callback (callable, optional): Function to call with distance measurements
+        """
+        print("looking for handshake")
+        while True:
+            is_response = await self.handshake_response()
+            print(is_response)
             await uasyncio.sleep_ms(50)
 
     async def start_calibration(self, num_samples=100):
@@ -221,10 +270,10 @@ async def main():
     SRC_ADDR = 0x1234  # For receiver
 
     # Create receiver instance
-    receiver = UWBReceiver()
+    receiver = UWBNode(PAN_ID, SRC_ADDR)
     
     # Initialize
-    await receiver.init(PAN_ID, SRC_ADDR)
+    await receiver.init()
     
     # Start continuous ranging
     def distance_callback(distance):

@@ -1,6 +1,5 @@
 import time
 from machine import Pin, SPI
-import asyncio
 
 # SPI configuration 
 spi = SPI(0, baudrate=1000000, polarity=0, phase=0, sck=Pin(18), mosi=Pin(19), miso=Pin(16))
@@ -297,6 +296,8 @@ def init_auto_ack(auto_ack=True, rx_auth=True):
 
     if auto_ack:
         sys_config = write_bit(sys_config,30,1)
+    elif auto_ack == False:
+        sys_config = write_bit(sys_config,30,0)
     
     if rx_auth:
        sys_config = write_bit(sys_config,29,1)
@@ -374,14 +375,15 @@ def format_message_mac(frame_type, seq_num, dest_pan_id, dest_addr, src_pan_id, 
 def transmit():
     # Set TXSTRT in SYS_CTRL register (0x0D)
     sys_ctrl = read_register(0x0D, 4)
-    sys_ctrl = int.from_bytes(sys_ctrl, 'little')
-    sys_ctrl |= (1 << 1)  # Set bit 1 (TXSTRT)
-    write_register(0x0D, sys_ctrl.to_bytes(4, 'little'))
+    sys_ctrl_new = write_bit(sys_ctrl,1,1)
+    write_register(0x0D, sys_ctrl_new)
+
 def transmit_and_wait():
     sys_ctrl = read_register(0x0D,4)
     sys_ctrl_new = write_bit(sys_ctrl,7,1)
     sys_ctrl_new = write_bit(sys_ctrl_new,1,1)
     write_register(0x0D,sys_ctrl_new)
+
 def get_rx_status():
     """
     Displays status of DWM1000 receiver
@@ -549,3 +551,35 @@ def bytes_to_int(b, byteorder='big'):
     else:
         raise ValueError("byteorder must be either 'big' or 'little'")
     return n
+
+def int_to_bytes(n, byteorder='big'):
+        """Convert integer to bytes with specified byte order."""
+        if n == 0:
+            return b'\x00'
+
+        result = bytearray()
+        while n > 0:
+            result.append(n & 0xFF)
+            n >>= 8
+
+        if byteorder == 'big':
+            reversed_result = []
+            for i in range(len(result) - 1, -1, -1):
+                reversed_result.append(result[i])
+            result = reversed_result
+
+        return bytes(result)
+
+def set_send_interrupt():
+    """
+    sets DWM1000 to interrupt Pico once a message is successfully sent
+    
+    """
+    write_register(0x0E, b'\x80\x00\x00\x00')
+
+def set_receive_interrupt():
+    """
+    sets DWM1000 to interrupt Pico once a message is successfully received
+    
+    """
+    write_register(0x0E, b'\x00\x40\x00\x00')

@@ -4,8 +4,8 @@ import time
 from random import randint
 import uasyncio
 
-class UWBTransmitter:
-    def __init__(self, led_pin="LED", irq_pin_num=14):
+class UWBTag:
+    def __init__(self, pan, id, led_pin="LED", irq_pin_num=14):
         """
         Initialize the UWB transmitter.
         
@@ -17,29 +17,14 @@ class UWBTransmitter:
         self.irq_pin = Pin(irq_pin_num, Pin.IN)
         self.tx_time = None
         self.rx_time = None
-        self.success = False
+        self.range_sucess = False
         self.times_success = False
+        self.handshake_success = False
         self.target_addr = None
+        self.pan = pan
+        self.src = id
 
-    def int_to_bytes(self, n, byteorder='big'):
-        """Convert integer to bytes with specified byte order."""
-        if n == 0:
-            return b'\x00'
-
-        result = bytearray()
-        while n > 0:
-            result.append(n & 0xFF)
-            n >>= 8
-
-        if byteorder == 'big':
-            reversed_result = []
-            for i in range(len(result) - 1, -1, -1):
-                reversed_result.append(result[i])
-            result = reversed_result
-
-        return bytes(result)
-
-    async def init(self, pan_id, src_addr):
+    async def init(self):
         """
         Initialize the UWB radio with specified PAN ID and source address.
         
@@ -51,8 +36,8 @@ class UWBTransmitter:
         dwmCom.setup_radio()
         dwmCom.lde_load()
         dwmCom.init_frame_control(
-            pan_id=pan_id,
-            device_address=src_addr,
+            pan_id=self.pan,
+            device_address=self.src,
             enable_beacon=True,
             enable_data=True,
             enable_ack=True,
@@ -68,20 +53,19 @@ class UWBTransmitter:
         message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
         sequence = message[2]
         if sequence == self.current_sequence:
-            self.success = True
+            self.range_success = True
             self.led.toggle()
 
 #sort out how to handle tag/node handshake
     def _handle_handshake_interrupt(self, pin):
         """Handle interrupt for handshake."""
-        self.tx_time = dwmCom.get_tx_timestamp()
-        self.rx_time = dwmCom.get_rx_timestamp()
         message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
+        print(message.hex())
         sequence = message[2]
-        self.target_addr = message[9:10]
-        print(self.target_addr)
+        print(sequence)
+        self.target_addr = int.from_bytes(message[7:9], 'big')
         if sequence == self.current_sequence:
-            self.success = True
+            self.handshake_success = True
             self.led.toggle()
 
     def _handle_times_interrupt(self, pin):
@@ -92,7 +76,7 @@ class UWBTransmitter:
             self.times_success = True
             self.led.toggle()
 
-    async def send_times(self, tx, rx, dest_addr, sequence_num, src_addr, pan_id):
+    async def send_times(self, tx, rx, dest_addr, sequence_num):
         """
         Send timestamp data to destination.
         
@@ -110,22 +94,22 @@ class UWBTransmitter:
         message = bytearray()
         
         # Format tx timestamp (5 bytes)
-        tx_bytes = self.int_to_bytes(tx, byteorder='little')
+        tx_bytes = dwmCom.int_to_bytes(tx, byteorder='little')
         tx_bytes = tx_bytes + (b'\x00' * (5 - len(tx_bytes)))
         message.extend(tx_bytes)
         
         # Format rx timestamp (5 bytes)
-        rx_bytes = self.int_to_bytes(rx, byteorder='little')
+        rx_bytes = dwmCom.int_to_bytes(rx, byteorder='little')
         rx_bytes = rx_bytes + (b'\x00' * (5 - len(rx_bytes)))
         message.extend(rx_bytes)
 
         dwmCom.format_message_mac(
             frame_type=1,
             seq_num=sequence_num,
-            dest_pan_id=pan_id,
+            dest_pan_id=self.pan,
             dest_addr=dest_addr,
-            src_pan_id=pan_id,
-            src_addr=src_addr,
+            src_pan_id=self.pan,
+            src_addr=self.src,
             payload=message,
             security_enabled=False,
             frame_pending=False,
@@ -142,7 +126,7 @@ class UWBTransmitter:
 
         return self.times_success
 
-    async def twr(self, pan_id, src_addr, dest_addr, sequence_num):
+    async def twr(self, dest_addr, sequence_num):
         """
         Perform Two-Way Ranging (TWR).
         
@@ -158,10 +142,10 @@ class UWBTransmitter:
         dwmCom.format_message_mac(
             frame_type=1,
             seq_num=sequence_num,
-            dest_pan_id=pan_id,
+            dest_pan_id=self.pan,
             dest_addr=dest_addr,
-            src_pan_id=pan_id,
-            src_addr=src_addr,
+            src_pan_id=self.pan,
+            src_addr=self.src,
             payload='hello',
             security_enabled=False,
             frame_pending=False,
@@ -170,28 +154,26 @@ class UWBTransmitter:
         )
 
         dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-        dwmCom.write_register(0x0E, b'\x00\x40\x00\x00')
+        dwmCom.set_receive_interrupt()
 
-        self.success = False
+        self.range_success = False
         self.current_sequence = sequence_num
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_twr_interrupt)
         
         dwmCom.transmit_and_wait()
         time.sleep_ms(1)
 
-        if self.success:
+        if self.range_success:
             time_sent = await self.send_times(
                 self.tx_time, 
                 self.rx_time, 
                 dest_addr,
-                sequence_num, 
-                src_addr, 
-                pan_id
+                sequence_num
             )
             return time_sent
         return False
 
-    async def handshake(self, pan_id, src_addr, sequence_num):
+    async def handshake(self, sequence_num):
         """
         handshake to determine what node to range with.
         
@@ -206,37 +188,36 @@ class UWBTransmitter:
         dwmCom.format_message_mac(
             frame_type=1,
             seq_num=sequence_num,
-            dest_pan_id=pan_id,
+            dest_pan_id=self.pan,
             dest_addr=0XFFFF,
-            src_pan_id=pan_id,
-            src_addr=src_addr,
+            src_pan_id=self.pan,
+            src_addr=self.src,
             payload='hello',
             security_enabled=False,
             frame_pending=False,
-            ack_request=True,
+            ack_request=False,
             pan_id_compress=False
         )
 
-        dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-        dwmCom.write_register(0x0E, b'\x00\x40\x00\x00')
+        dwmCom.init_auto_ack(auto_ack=False, rx_auth=True)
+        dwmCom.set_receive_interrupt()
 
-        self.success = False
+        self.handshake_success = False
         self.current_sequence = sequence_num
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
-        
-        dwmCom.transmit_and_wait()
-        time.sleep_ms(1)
 
-        if self.success:
-            time_sent = await self.send_times(
-                self.tx_time, 
-                self.rx_time, 
-                self.target_addr,
-                sequence_num, 
-                src_addr, 
-                pan_id
-            )
-            return time_sent
+        count = 0
+        dwmCom.transmit()
+        await uasyncio.sleep_ms(5)
+    
+        while not self.handshake_success and count <= 200:
+            dwmCom.search()
+            await uasyncio.sleep_ms(5)
+            count += 1
+
+        if self.handshake_success:
+            print(self.target_addr)
+            return True
         return False
 
 # Example usage:
@@ -247,18 +228,18 @@ async def main():
     DEST_ADDR = 0x1234
 
     # Create transmitter instance
-    transmitter = UWBTransmitter()
+    transmitter = UWBTag(PAN_ID,SRC_ADDR)
     
     # Initialize
-    await transmitter.init(PAN_ID, SRC_ADDR)
+    await transmitter.init()
     
     # Main loop
     while True:
         sequence_num = randint(0, 255)
-        result = await transmitter.twr(PAN_ID, SRC_ADDR, DEST_ADDR, sequence_num)
+        result = await transmitter.twr(DEST_ADDR, sequence_num)
         print(result)
         if result == False:
-            await transmitter.init(PAN_ID, DEST_ADDR)
+            await transmitter.init()
         await uasyncio.sleep(0.5)
 
 if __name__ == "__main__":
