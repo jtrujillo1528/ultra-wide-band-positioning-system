@@ -106,7 +106,7 @@ class UWBNode:
             pan_id_compress=False
         )
         dwmCom.transmit()
-        await uasyncio.sleep_ms(50)
+        await uasyncio.sleep_ms(5)
         self.led.toggle()
 
     async def receive_times(self, sequence):

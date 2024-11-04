@@ -59,11 +59,11 @@ class UWBTag:
 #sort out how to handle tag/node handshake
     def _handle_handshake_interrupt(self, pin):
         """Handle interrupt for handshake."""
-        print("interrupt received")
+        #print("interrupt received")
         message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
-        print(message.hex())
+        #print(message.hex())
         sequence = message[15]
-        print(sequence)
+        #print(sequence)
         self.target_addr = int.from_bytes(message[7:9], 'big')
         if sequence == self.current_sequence:
             self.handshake_success = True
