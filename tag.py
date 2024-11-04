@@ -59,7 +59,8 @@ class UWBTag:
 #sort out how to handle tag/node handshake
     def _handle_handshake_interrupt(self, pin):
         """Handle interrupt for handshake."""
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
+        print("interrupt received")
+        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
         print(message.hex())
         sequence = message[15]
         print(sequence)
@@ -199,21 +200,25 @@ class UWBTag:
             pan_id_compress=False
         )
 
-        dwmCom.init_auto_ack(auto_ack=False, rx_auth=True)
-        dwmCom.set_receive_interrupt()
-
         self.handshake_success = False
         self.current_sequence = sequence_num
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
 
-        count = 0
         dwmCom.transmit()
-        await uasyncio.sleep_ms(5)
-    
+        time.sleep_ms(5)
+
+        await self.init()
+        dwmCom.set_receive_interrupt()
+        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
+
+        count = 0
         while not self.handshake_success and count <= 200:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1
+
+
+
 
         if self.handshake_success:
             print(self.target_addr)

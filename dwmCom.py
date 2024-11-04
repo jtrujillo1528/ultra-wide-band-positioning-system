@@ -369,16 +369,25 @@ def format_message_mac(frame_type, seq_num, dest_pan_id, dest_addr, src_pan_id, 
     write_subregister(0x08, 0x00, frame_length, 5, 1)
     # Write message to TX buffer (0x09)
     write_register(0x09, frame)
-    print(read_register_intuitive(0x09,frame_length).hex())
+    #print(read_register_intuitive(0x09,frame_length).hex())
     
     return frame
+
 def transmit():
+    """
+    Function to transmit a message in the DWM1000
+
+    """
     # Set TXSTRT in SYS_CTRL register (0x0D)
     sys_ctrl = read_register(0x0D, 4)
     sys_ctrl_new = write_bit(sys_ctrl,1,1)
     write_register(0x0D, sys_ctrl_new)
 
 def transmit_and_wait():
+    """
+    Function to transmit a message and automatically enter reception mode in the DWM1000
+
+    """
     sys_ctrl = read_register(0x0D,4)
     sys_ctrl_new = write_bit(sys_ctrl,7,1)
     sys_ctrl_new = write_bit(sys_ctrl_new,1,1)
@@ -533,8 +542,14 @@ def init_ack_timing(w4r_time=None, ack_time=None):
     if ack_time:
         write_subregister(0x1A,0x03, ack_time,4,1)
 
-def init_rx_timeout(time):
-    write_register(0x0C,time)
+def init_rx_timeout(wait_time):
+    """
+    Function to set the receive frame wait timeout period in the DWM1000
+
+    :param wait_time: time in microseconds to wait for a response
+
+    """
+    write_subregister(0x0C,0,wait_time,4,2)
 
 def bytes_to_int(b, byteorder='big'):
     n = 0
