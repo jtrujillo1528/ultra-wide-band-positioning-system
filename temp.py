@@ -8,7 +8,7 @@ irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 
 # Example usage
 PAN_ID = 0xB34A  # Example PAN ID
-SRC_ADDR = 0x1234 #update for src
+SRC_ADDR = 0x3141 #update for src
 
 
 
