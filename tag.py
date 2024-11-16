@@ -65,7 +65,7 @@ class UWBTag:
         sequence = message[15]
         target_addr = int.from_bytes(message[7:9], 'big')
         if sequence == self.current_sequence and target_addr not in self.handshake_results:
-            self.handshake_results.append(target_addr)
+            self.handshake_results.append(hex(target_addr))
             #self.led.toggle()
 
     def _handle_times_interrupt(self, pin):
@@ -211,7 +211,7 @@ class UWBTag:
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
 
         count = 0
-        while count <= 300:
+        while count <= 200:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1

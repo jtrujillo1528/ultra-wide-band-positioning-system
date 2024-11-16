@@ -30,6 +30,6 @@ async def main():
         result = await transmitter.handshake(sequence_num)
         print(result)
         await transmitter.init()
-        await uasyncio.sleep(0.05)
+        await uasyncio.sleep(2)
 
 uasyncio.run(main())

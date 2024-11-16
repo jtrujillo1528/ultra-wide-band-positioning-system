@@ -106,8 +106,8 @@ class UWBNode:
             ack_request=False,
             pan_id_compress=False
         )
-        rand = random.randint(0,20)
-        delay = 0.05*rand
+        rand = random.randint(0,50)
+        delay = 0.01*rand
         await uasyncio.sleep(delay)
         dwmCom.transmit()
         await uasyncio.sleep_ms(5)
