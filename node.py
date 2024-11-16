@@ -2,6 +2,7 @@ import dwmCom
 import time
 from machine import Pin
 import uasyncio
+import random
 
 class UWBNode:
     def __init__(self, pan, src, led_pin="LED", irq_pin_num=14):
@@ -105,6 +106,9 @@ class UWBNode:
             ack_request=False,
             pan_id_compress=False
         )
+        rand = random.randint(0,100)
+        delay = 0.001*rand
+        await uasyncio.sleep(delay)
         dwmCom.transmit()
         await uasyncio.sleep_ms(5)
         self.led.toggle()

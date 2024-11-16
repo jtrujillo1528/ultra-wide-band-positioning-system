@@ -19,7 +19,7 @@ class UWBTag:
         self.rx_time = None
         self.range_sucess = False
         self.times_success = False
-        self.handshake_success = False
+        self.handshake_results = []
         self.target_addr = None
         self.pan = pan
         self.src = id
@@ -61,13 +61,15 @@ class UWBTag:
         """Handle interrupt for handshake."""
         #print("interrupt received")
         message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
+        dwmCom.toggle_buffer()
         #print(message.hex())
         sequence = message[15]
         #print(sequence)
-        self.target_addr = int.from_bytes(message[7:9], 'big')
-        if sequence == self.current_sequence:
-            self.handshake_success = True
-            self.led.toggle()
+        target_addr = int.from_bytes(message[7:9], 'big')
+        print(target_addr)
+        if sequence == self.current_sequence and target_addr not in self.handshake_results:
+            self.handshake_results.append(target_addr)
+            #self.led.toggle()
 
     def _handle_times_interrupt(self, pin):
         """Handle interrupt for time data transmission."""
@@ -202,26 +204,24 @@ class UWBTag:
 
         self.handshake_success = False
         self.current_sequence = sequence_num
-        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
 
         dwmCom.transmit()
         time.sleep_ms(5)
 
         await self.init()
         dwmCom.set_receive_interrupt()
+        dwmCom.enable_double_buffering()
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
 
         count = 0
-        while not self.handshake_success and count <= 200:
+        while count <= 500:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1
 
-
-
-
-        if self.handshake_success:
-            print(self.target_addr)
+        if len(self.handshake_results) > 0:
+            print(self.handshake_results)
+            self.handshake_results = []
             return True
         return False
 

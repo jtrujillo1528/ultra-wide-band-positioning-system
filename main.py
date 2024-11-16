@@ -31,6 +31,6 @@ async def main():
         print(result)
         if result == False:
             await transmitter.init()
-        await uasyncio.sleep(0.5)
+        await uasyncio.sleep(0.05)
 
 uasyncio.run(main())

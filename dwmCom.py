@@ -598,3 +598,26 @@ def set_receive_interrupt():
     
     """
     write_register(0x0E, b'\x00\x40\x00\x00')
+
+def toggle_buffer():
+    status_register = read_register(0x0F,5)
+    hsrbp = read_bit(status_register,30)
+    icrbp = read_bit(status_register,31)
+    if hsrbp != icrbp:
+        system_control = read_register(0x0D,4)
+        system_control = write_bit(system_control,25,icrbp)
+        write_register(0x0D,system_control)
+    else:
+        clear_status_bits(0x0F,[15,14,13,10] )
+
+def enable_double_buffering():
+    system_config = read_register(0x04,4)
+    system_config = write_bit(system_config,29,1) #init rxauth (re-enables radio if RX error)
+    system_config = write_bit(system_config,12,0)
+    write_register(0x04,system_config)
+
+    toggle_buffer()
+
+
+reset()
+enable_double_buffering()
