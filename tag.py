@@ -59,14 +59,11 @@ class UWBTag:
 #sort out how to handle tag/node handshake
     def _handle_handshake_interrupt(self, pin):
         """Handle interrupt for handshake."""
-        #print("interrupt received")
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
+        message = dwmCom.read_register(0x11, 18)
         dwmCom.toggle_buffer()
-        #print(message.hex())
+        message = bytearray(reversed(message))
         sequence = message[15]
-        #print(sequence)
         target_addr = int.from_bytes(message[7:9], 'big')
-        print(target_addr)
         if sequence == self.current_sequence and target_addr not in self.handshake_results:
             self.handshake_results.append(target_addr)
             #self.led.toggle()
@@ -214,7 +211,7 @@ class UWBTag:
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
 
         count = 0
-        while count <= 500:
+        while count <= 300:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1

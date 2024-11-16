@@ -29,8 +29,7 @@ async def main():
         #result = await transmitter.twr(DEST_ADDR, sequence_num)
         result = await transmitter.handshake(sequence_num)
         print(result)
-        if result == False:
-            await transmitter.init()
+        await transmitter.init()
         await uasyncio.sleep(0.05)
 
 uasyncio.run(main())

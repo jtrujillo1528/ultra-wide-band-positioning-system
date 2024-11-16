@@ -605,7 +605,7 @@ def toggle_buffer():
     icrbp = read_bit(status_register,31)
     if hsrbp != icrbp:
         system_control = read_register(0x0D,4)
-        system_control = write_bit(system_control,25,icrbp)
+        system_control = write_bit(system_control,24,icrbp)
         write_register(0x0D,system_control)
     else:
         clear_status_bits(0x0F,[15,14,13,10] )
