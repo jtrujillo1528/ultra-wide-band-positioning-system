@@ -61,6 +61,7 @@ class UWBTag:
         """Handle interrupt for handshake."""
         message = dwmCom.read_register(0x11, 18)
         dwmCom.toggle_buffer()
+        dwmCom.search()
         message = bytearray(reversed(message))
         sequence = message[15]
         target_addr = int.from_bytes(message[7:9], 'big')
@@ -209,9 +210,8 @@ class UWBTag:
         dwmCom.set_receive_interrupt()
         dwmCom.enable_double_buffering()
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
-
         count = 0
-        while count <= 200:
+        while count <= 100:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1

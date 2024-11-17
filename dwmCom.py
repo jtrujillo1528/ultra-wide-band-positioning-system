@@ -301,6 +301,8 @@ def init_auto_ack(auto_ack=True, rx_auth=True):
     
     if rx_auth:
        sys_config = write_bit(sys_config,29,1)
+    elif not rx_auth:
+        sys_config = write_bit(sys_config, 29, 0)
 
     write_register(0x04,sys_config)
     
@@ -597,27 +599,26 @@ def set_receive_interrupt():
     sets DWM1000 to interrupt Pico once a message is successfully received
     
     """
-    write_register(0x0E, b'\x00\x40\x00\x00')
+    write_register(0x0E, b'\x00\x40\x10\x00')
 
 def toggle_buffer():
     status_register = read_register(0x0F,5)
     hsrbp = read_bit(status_register,30)
     icrbp = read_bit(status_register,31)
+    rxovrr = read_bit(status_register,20)
+
+    if rxovrr == 1:
+        print("receiver overrun")
     if hsrbp != icrbp:
         system_control = read_register(0x0D,4)
-        system_control = write_bit(system_control,24,icrbp)
+        system_control = write_bit(system_control,24,1)
         write_register(0x0D,system_control)
-    else:
+    elif hsrbp == icrbp:
         clear_status_bits(0x0F,[15,14,13,10] )
 
 def enable_double_buffering():
     system_config = read_register(0x04,4)
-    system_config = write_bit(system_config,29,1) #init rxauth (re-enables radio if RX error)
-    system_config = write_bit(system_config,12,0)
+    system_config = write_bit(system_config,29,1) #init rxautr (re-enables radio if RX error or received message)
+    system_config = write_bit(system_config,12,0)# init double buffer
     write_register(0x04,system_config)
 
-    toggle_buffer()
-
-
-reset()
-enable_double_buffering()
