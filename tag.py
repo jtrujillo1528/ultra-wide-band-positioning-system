@@ -211,7 +211,7 @@ class UWBTag:
         dwmCom.enable_double_buffering()
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
         count = 0
-        while count <= 100:
+        while count <= 150:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1
