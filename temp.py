@@ -9,7 +9,7 @@ irq_pin = Pin(14, Pin.IN)  # Assuming the IRQ pin is connected to GPIO 14
 
 # Example usage
 PAN_ID = 0xB34A  # Example PAN ID
-SRC_ADDR = 0x0420 #update for src
+SRC_ADDR = 0x1234 #update for src
 
 
 
@@ -20,13 +20,13 @@ async def main():
     
     # Initialize
     await tag.init()
-    
-    '''# Start continuous ranging
-    def distance_callback(distance):
-        print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
-    
-    await receiver.start_continuous_ranging(callback=distance_callback)'''
 
-    await tag.start_handshake()
+    while True:
+        result = await tag.twr_response()
+        print(result)
+        await uasyncio.sleep(0.5)
+        await tag.init()
+
+    #await tag.start_handshake()
 
 uasyncio.run(main())

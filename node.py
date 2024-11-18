@@ -2,7 +2,7 @@ import dwmCom
 import time
 from machine import Pin
 import uasyncio
-import random
+from random import randint
 
 class UWBNode:
     def __init__(self, pan, src, led_pin="LED", irq_pin_num=14):
@@ -33,7 +33,6 @@ class UWBNode:
         self.pan = pan
         self.id = src
         self.handshake_results = []
-        self.current_sequence = 0
 
     async def init(self):
         """
@@ -57,15 +56,15 @@ class UWBNode:
             enable_reserved=False
         )
 
-    def _handle_interrupt_tr(self, pin):
-        """Handle interrupt for two-way ranging response."""
-        self.r_2 = dwmCom.get_rx_timestamp()
-        self.t_3 = dwmCom.get_tx_timestamp()
-
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
-        print(message.hex())
-        self.sequence = message[15]
-        self.success_tr = True
+    def _handle_twr_interrupt(self, pin):
+        """Handle interrupt for TWR transmission."""
+        self.t_1 = dwmCom.get_tx_timestamp()
+        self.r_4 = dwmCom.get_rx_timestamp()
+        message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
+        sequence = message[2]
+        if sequence == self.sequence:
+            self.range_success = True
+            self.led.toggle()
 
     def _handle_handshake_interrupt(self, pin):
         """Handle interrupt for handshake."""
@@ -75,7 +74,7 @@ class UWBNode:
         message = bytearray(reversed(message))
         sequence = message[15]
         target_addr = int.from_bytes(message[7:9], 'big')
-        if sequence == self.current_sequence and target_addr not in self.handshake_results:
+        if sequence == self.sequence and target_addr not in self.handshake_results:
             self.handshake_results.append(hex(target_addr))
             #self.led.toggle()
 
@@ -88,7 +87,7 @@ class UWBNode:
             self.success_times = True
             self.led.toggle()
 
-    async def receive_times(self, sequence):
+    async def receive_times(self):
         """
         Receive timing data for a specific sequence number.
         
@@ -99,7 +98,6 @@ class UWBNode:
             bool: Success status
         """
         self.success_times = False
-        self.sequence = sequence
         
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_times)
 
@@ -110,34 +108,52 @@ class UWBNode:
             count += 1
 
         return self.success_times
-
-    async def twr_response(self):
+    
+    async def twr(self, dest_addr):
         """
-        Perform two-way ranging response.
+        Perform Two-Way Ranging (TWR).
+        
+        Args:
+            pan_id (int): PAN identifier
+            src_addr (int): Source address
+            dest_addr (int): Destination address
+            sequence_num (int): Sequence number
         
         Returns:
             bool: Success status
         """
-        dwmCom.init_ack_timing(ack_time=6)
+        self.sequence = randint(0,255)
+        dwmCom.format_message_mac(
+            frame_type=1,
+            seq_num=self.sequence,
+            dest_pan_id=self.pan,
+            dest_addr=dest_addr,
+            src_pan_id=self.pan,
+            src_addr=self.id,
+            payload='hello',
+            security_enabled=False,
+            frame_pending=False,
+            ack_request=True,
+            pan_id_compress=False
+        )
+
         dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-        dwmCom.set_send_interrupt()
+        dwmCom.set_receive_interrupt()
 
-        self.success_tr = False
-        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_tr)
-
-        count = 0
-        while not self.success_tr and count <= 200:
-            dwmCom.search()
-            await uasyncio.sleep_ms(5)
-            count += 1
-
-        if self.success_tr:
-            result = await self.receive_times(self.sequence)
-            return result
+        self.range_success = False
+        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_twr_interrupt)
         
+        dwmCom.transmit_and_wait()
+        time.sleep_ms(1)
+
+        if self.range_success:
+            time.sleep_ms(5)
+            time_received = await self.receive_times()
+
+            return time_received
         return False
     
-    async def handshake(self, sequence_num):
+    async def handshake(self):
         """
         handshake to determine what node to range with.
         
@@ -149,9 +165,10 @@ class UWBNode:
         Returns:
             bool: Success status
         """
+        self.sequence = randint(0,255)
         dwmCom.format_message_mac(
             frame_type=1,
-            seq_num=sequence_num,
+            seq_num=self.sequence,
             dest_pan_id=self.pan,
             dest_addr=0XFFFF,
             src_pan_id=self.pan,
@@ -164,7 +181,6 @@ class UWBNode:
         )
 
         self.handshake_success = False
-        self.current_sequence = sequence_num
 
         dwmCom.transmit()
         time.sleep_ms(5)
@@ -192,8 +208,8 @@ class UWBNode:
         Returns:
             float: Calculated distance in meters
         """
-        self.r_4 = int(self.times_message[2:7].hex(), 16)
-        self.t_1 = int(self.times_message[7:12].hex(), 16)
+        self.r_2 = int(self.times_message[2:7].hex(), 16)
+        self.t_3 = int(self.times_message[7:12].hex(), 16)
 
         t1 = self.r_4 - self.t_1
         t2 = self.t_3 - self.r_2
@@ -217,7 +233,7 @@ class UWBNode:
 
         return t1, t2
 
-    async def start_continuous_ranging(self, callback=None):
+    async def start_continuous_ranging(self, dest_addr, callback=None):
         """
         Start continuous ranging measurements with optional callback.
         
@@ -226,12 +242,13 @@ class UWBNode:
         """
         print("Starting continuous ranging...")
         while True:
-            is_response = await self.twr_response()
+            is_response = await self.twr(dest_addr)
             if is_response:
                 distance = await self.get_distance()
                 if callback:
                     callback(distance)
-            await uasyncio.sleep_ms(50)
+            else: await self.init()
+            await uasyncio.sleep_ms(1000)
 
     async def start_calibration(self, num_samples=100):
         """
@@ -251,7 +268,7 @@ class UWBNode:
         
         print("Starting calibration...")
         while len(calibration_data["t1"]) <= num_samples:
-            is_response = await self.twr_response()
+            is_response = await self.twr(0x1234)
             if is_response:
                 t1, t2 = await self.get_calibration_data()
                 calibration_data["t1"].append(t1)
@@ -276,7 +293,7 @@ async def main():
     def distance_callback(distance):
         print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
     
-    await receiver.start_continuous_ranging(callback=distance_callback)
+    await receiver.start_continuous_ranging(0x1234, callback=distance_callback)
 
 if __name__ == "__main__":
     uasyncio.run(main())

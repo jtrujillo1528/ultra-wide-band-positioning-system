@@ -7,7 +7,7 @@ import uasyncio
 class UWBTag:
     def __init__(self, pan, id, led_pin="LED", irq_pin_num=14):
         """
-        Initialize the UWB transmitter.
+        Initialize the UWB Tag.
         
         Args:
             led_pin (str): Pin name for LED
@@ -15,9 +15,8 @@ class UWBTag:
         """
         self.led = Pin(led_pin, Pin.OUT)
         self.irq_pin = Pin(irq_pin_num, Pin.IN)
-        self.tx_time = None
-        self.rx_time = None
-        self.range_sucess = False
+        self.t_3 = None
+        self.r_2 = None
         self.times_success = False
         self.handshake_init = False
         self.handshake_complete = False
@@ -47,15 +46,15 @@ class UWBTag:
             enable_reserved=False
         )
 
-    def _handle_twr_interrupt(self, pin):
-        """Handle interrupt for TWR transmission."""
-        self.tx_time = dwmCom.get_tx_timestamp()
-        self.rx_time = dwmCom.get_rx_timestamp()
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
-        sequence = message[2]
-        if sequence == self.current_sequence:
-            self.range_success = True
-            self.led.toggle()
+    def _handle_interrupt_tr(self, pin):
+        """Handle interrupt for two-way ranging response."""
+        self.r_2 = dwmCom.get_rx_timestamp()
+        self.t_3 = dwmCom.get_tx_timestamp()
+
+        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
+        self.sequence = message[15]
+        self.target_addr = int.from_bytes(message[7:9], 'big')
+        self.success_tr = True
 
     def _handle_interrupt_handshake(self, pin):
         """Handle interrupt for two-way handshake response."""
@@ -64,8 +63,6 @@ class UWBTag:
 
         self.sequence = message[15]
 
-        self.target_addr = int.from_bytes(message[7:9], 'big')
-
         self.handshake_init = True
 
     def _send_handshake_interrupt(self, pin):
@@ -73,11 +70,8 @@ class UWBTag:
 
     def _handle_times_interrupt(self, pin):
         """Handle interrupt for time data transmission."""
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 5))
-        sequence = message[2]
-        if sequence == self.current_sequence:
-            self.times_success = True
-            self.led.toggle()
+        self.times_success = True
+        self.led.toggle()
 
     async def send_handshake(self):
         dwmCom.format_message_mac(
@@ -100,7 +94,33 @@ class UWBTag:
         await uasyncio.sleep_ms(5)
         self.led.toggle()
 
-    async def send_times(self, tx, rx, dest_addr, sequence_num):
+    async def twr_response(self):
+        """
+        Perform two-way ranging response.
+        
+        Returns:
+            bool: Success status
+        """
+        dwmCom.init_ack_timing(ack_time=6)
+        dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
+        dwmCom.set_send_interrupt()
+
+        self.success_tr = False
+        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_tr)
+
+        count = 0
+        while not self.success_tr and count <= 200:
+            dwmCom.search()
+            await uasyncio.sleep_ms(5)
+            count += 1
+
+        if self.success_tr:
+            result = await self.send_times()
+            return result
+        
+        return False
+
+    async def send_times(self):
         """
         Send timestamp data to destination.
         
@@ -118,20 +138,23 @@ class UWBTag:
         message = bytearray()
         
         # Format tx timestamp (5 bytes)
-        tx_bytes = dwmCom.int_to_bytes(tx, byteorder='little')
+        tx_bytes = dwmCom.int_to_bytes(self.t_3, byteorder='little')
         tx_bytes = tx_bytes + (b'\x00' * (5 - len(tx_bytes)))
         message.extend(tx_bytes)
         
         # Format rx timestamp (5 bytes)
-        rx_bytes = dwmCom.int_to_bytes(rx, byteorder='little')
+        rx_bytes = dwmCom.int_to_bytes(self.r_2, byteorder='little')
         rx_bytes = rx_bytes + (b'\x00' * (5 - len(rx_bytes)))
         message.extend(rx_bytes)
 
+        await self.init()
+        await uasyncio.sleep_ms(50)
+
         dwmCom.format_message_mac(
             frame_type=1,
-            seq_num=sequence_num,
+            seq_num=self.sequence,
             dest_pan_id=self.pan,
-            dest_addr=dest_addr,
+            dest_addr=self.target_addr,
             src_pan_id=self.pan,
             src_addr=self.id,
             payload=message,
@@ -141,62 +164,15 @@ class UWBTag:
             pan_id_compress=False
         )
 
-        self.current_sequence = sequence_num
         self.times_success = False
+        dwmCom.set_send_interrupt()
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_times_interrupt)
         
-        dwmCom.transmit_and_wait()
+        dwmCom.transmit()
         time.sleep_ms(1)
 
         return self.times_success
 
-    async def twr(self, dest_addr, sequence_num):
-        """
-        Perform Two-Way Ranging (TWR).
-        
-        Args:
-            pan_id (int): PAN identifier
-            src_addr (int): Source address
-            dest_addr (int): Destination address
-            sequence_num (int): Sequence number
-        
-        Returns:
-            bool: Success status
-        """
-        dwmCom.format_message_mac(
-            frame_type=1,
-            seq_num=sequence_num,
-            dest_pan_id=self.pan,
-            dest_addr=dest_addr,
-            src_pan_id=self.pan,
-            src_addr=self.id,
-            payload='hello',
-            security_enabled=False,
-            frame_pending=False,
-            ack_request=True,
-            pan_id_compress=False
-        )
-
-        dwmCom.init_auto_ack(auto_ack=True, rx_auth=True)
-        dwmCom.set_receive_interrupt()
-
-        self.range_success = False
-        self.current_sequence = sequence_num
-        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_twr_interrupt)
-        
-        dwmCom.transmit_and_wait()
-        time.sleep_ms(1)
-
-        if self.range_success:
-            time_sent = await self.send_times(
-                self.tx_time, 
-                self.rx_time, 
-                dest_addr,
-                sequence_num
-            )
-            return time_sent
-        return False
-    
     async def handshake_response(self):
         """
         Perform two-way ranging response.
@@ -218,7 +194,6 @@ class UWBTag:
             count += 1
 
         if self.handshake_init:
-            #print('handshake init received')
             await self.init()
             dwmCom.set_send_interrupt()
             self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._send_handshake_interrupt)
@@ -236,7 +211,6 @@ class UWBTag:
         Args:
             callback (callable, optional): Function to call with distance measurements
         """
-        print("looking for handshake")
         while True:
             is_response = await self.handshake_response()
             if is_response == True:
@@ -249,7 +223,6 @@ async def main():
     # Example parameters
     PAN_ID = 0xB34A
     SRC_ADDR = 0x5678
-    DEST_ADDR = 0x1234
 
     # Create transmitter instance
     transmitter = UWBTag(PAN_ID,SRC_ADDR)
@@ -259,8 +232,7 @@ async def main():
     
     # Main loop
     while True:
-        sequence_num = randint(0, 255)
-        result = await transmitter.twr(DEST_ADDR, sequence_num)
+        result = await transmitter.twr_response()
         print(result)
         if result == False:
             await transmitter.init()

@@ -20,14 +20,17 @@ async def main():
     
     # Initialize
     await node.init()
+
+    def distance_callback(distance):
+        print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
+
+    await node.start_continuous_ranging(DEST_ADDR, callback=distance_callback)
     
     # Main loop
-    while True:
-        sequence_num = randint(0, 255)
-        #result = await transmitter.twr(DEST_ADDR, sequence_num)
-        result = await node.handshake(sequence_num)
+'''    while True:
+        result = await node.handshake()
         print(result)
         await node.init()
-        await uasyncio.sleep(2)
+        await uasyncio.sleep(2)'''
 
 uasyncio.run(main())
