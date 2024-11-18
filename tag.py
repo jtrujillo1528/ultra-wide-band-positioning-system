@@ -111,7 +111,7 @@ class UWBTag:
         self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_tr)
 
         count = 0
-        while not self.success_tr and count <= 200:
+        while not self.success_tr and count <= 400:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1

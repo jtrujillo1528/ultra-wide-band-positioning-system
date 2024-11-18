@@ -13,7 +13,6 @@ async def main():
     # Example parameters
     PAN_ID = 0xB34A
     SRC_ADDR = 0x5678
-    DEST_ADDR = 0x1234
 
     # Create transmitter instance
     node = UWBNode(PAN_ID, SRC_ADDR)
@@ -21,8 +20,8 @@ async def main():
     # Initialize
     await node.init()
 
-    def distance_callback(distance):
-        print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
+    def distance_callback(distance, dest_addr):
+        print(f"Device: {hex(dest_addr)} Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
     
     # Main loop
     while True:
@@ -30,7 +29,8 @@ async def main():
         if result is not None:
             for device in result:
                 await node.init()
-                await node.start_continuous_ranging(int(device), callback=distance_callback)
+                await node.start_ranging(int(device), callback=distance_callback)
+                await uasyncio.sleep_ms(50)
         await node.init()
         await uasyncio.sleep(2)
 

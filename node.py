@@ -234,20 +234,23 @@ class UWBNode:
 
         return t1, t2
 
-    async def start_continuous_ranging(self, dest_addr, callback=None):
+    async def start_ranging(self, dest_addr, callback=None):
         """
         Start continuous ranging measurements with optional callback.
         
         Args:
             callback (callable, optional): Function to call with distance measurements
         """
-        print("Starting continuous ranging...")
-        is_response = await self.twr(dest_addr)
-        if is_response:
-            distance = await self.get_distance()
-            if callback:
-                callback(distance)
-        else: await self.init()
+        is_response = False
+        count = 0
+        while not is_response and count < 5:
+            is_response = await self.twr(dest_addr)
+            if is_response:
+                distance = await self.get_distance()
+                if callback:
+                    callback(distance, dest_addr)
+            else: await self.init()
+            count += 1
 
     async def start_calibration(self, num_samples=100):
         """
@@ -292,7 +295,7 @@ async def main():
     def distance_callback(distance):
         print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
     
-    await receiver.start_continuous_ranging(0x1234, callback=distance_callback)
+    await receiver.start_ranging(0x1234, callback=distance_callback)
 
 if __name__ == "__main__":
     uasyncio.run(main())
