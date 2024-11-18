@@ -24,6 +24,13 @@ async def main():
         print(f"Device: {hex(dest_addr)} Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
     
     # Main loop
+    #make ranging faster and more reliable
+    #reset dwm1000 if device overrun
+    #handle distance outliers
+    #make handshake more reliable
+    #work out multiple nodes, multiple tags logic for ranging
+    #hook up MQTT backend
+
     while True:
         result = await node.handshake()
         if result is not None:
