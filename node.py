@@ -197,9 +197,10 @@ class UWBNode:
 
         if len(self.handshake_results) > 0:
             print(self.handshake_results)
+            ranging_targets = self.handshake_results
             self.handshake_results = []
-            return True
-        return False
+            return ranging_targets
+        return None
 
     async def get_distance(self):
         """
@@ -241,14 +242,12 @@ class UWBNode:
             callback (callable, optional): Function to call with distance measurements
         """
         print("Starting continuous ranging...")
-        while True:
-            is_response = await self.twr(dest_addr)
-            if is_response:
-                distance = await self.get_distance()
-                if callback:
-                    callback(distance)
-            else: await self.init()
-            await uasyncio.sleep_ms(1000)
+        is_response = await self.twr(dest_addr)
+        if is_response:
+            distance = await self.get_distance()
+            if callback:
+                callback(distance)
+        else: await self.init()
 
     async def start_calibration(self, num_samples=100):
         """

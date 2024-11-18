@@ -23,14 +23,15 @@ async def main():
 
     def distance_callback(distance):
         print(f"Distance: {distance:.3f} m ({distance/.0254:.2f} in)")
-
-    await node.start_continuous_ranging(DEST_ADDR, callback=distance_callback)
     
     # Main loop
-'''    while True:
+    while True:
         result = await node.handshake()
-        print(result)
+        if result is not None:
+            for device in result:
+                await node.init()
+                await node.start_continuous_ranging(int(device), callback=distance_callback)
         await node.init()
-        await uasyncio.sleep(2)'''
+        await uasyncio.sleep(2)
 
 uasyncio.run(main())

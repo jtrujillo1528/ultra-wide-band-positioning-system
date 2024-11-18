@@ -63,6 +63,8 @@ class UWBTag:
 
         self.sequence = message[15]
 
+        self.target_addr = int.from_bytes(message[7:9], 'big')
+
         self.handshake_init = True
 
     def _send_handshake_interrupt(self, pin):
@@ -206,7 +208,7 @@ class UWBTag:
     
     async def start_handshake(self, callback=None):
         """
-        Start continuous ranging measurements with optional callback.
+        Start handshake listening
         
         Args:
             callback (callable, optional): Function to call with distance measurements
@@ -214,7 +216,7 @@ class UWBTag:
         while True:
             is_response = await self.handshake_response()
             if is_response == True:
-                print('handshake received and response sent')
+                await self.twr_response()
             else: print('handshake not received')
             await uasyncio.sleep_ms(50)
 

@@ -22,11 +22,8 @@ async def main():
     await tag.init()
 
     while True:
-        result = await tag.twr_response()
-        print(result)
-        await uasyncio.sleep(0.5)
+        await tag.start_handshake()
         await tag.init()
 
-    #await tag.start_handshake()
 
 uasyncio.run(main())
