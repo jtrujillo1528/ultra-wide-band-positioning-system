@@ -27,13 +27,13 @@ class UWBNode:
         self.t_1 = 0  # Transmission timestamp 1
         self.r_4 = 0  # Reception timestamp 4
         self.success_tr = False
-        self.handshake_init = False
-        self.handshake_complete = False
         self.success_times = False
         self.sequence = None
         self.times_message = bytearray([])
         self.pan = pan
         self.id = src
+        self.handshake_results = []
+        self.current_sequence = 0
 
     async def init(self):
         """
@@ -67,16 +67,17 @@ class UWBNode:
         self.sequence = message[15]
         self.success_tr = True
 
-    def _handle_interrupt_handshake(self, pin):
-        """Handle interrupt for two-way handshake response."""
-
-        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
-        #print(message.hex())
-        self.sequence = message[15]
-        #print(hex(self.sequence))
-        self.target_addr = int.from_bytes(message[7:9], 'big')
-        #print(hex(self.target_addr))
-        self.handshake_init = True
+    def _handle_handshake_interrupt(self, pin):
+        """Handle interrupt for handshake."""
+        message = dwmCom.read_register(0x11, 18)
+        dwmCom.toggle_buffer()
+        dwmCom.search()
+        message = bytearray(reversed(message))
+        sequence = message[15]
+        target_addr = int.from_bytes(message[7:9], 'big')
+        if sequence == self.current_sequence and target_addr not in self.handshake_results:
+            self.handshake_results.append(hex(target_addr))
+            #self.led.toggle()
 
     def _handle_interrupt_times(self, pin):
         """Handle interrupt for timestamp reception."""
@@ -86,32 +87,6 @@ class UWBNode:
         if sequence_received == self.sequence:
             self.success_times = True
             self.led.toggle()
-
-    def _send_handshake_interrupt(self, pin):
-        #print("message sent")
-        self.handshake_complete = True
-
-    async def send_handshake(self):
-        #print('attempting to send handshake')
-        dwmCom.format_message_mac(
-            frame_type=1,
-            seq_num=self.sequence,
-            dest_pan_id=self.pan,
-            dest_addr=self.target_addr,
-            src_pan_id=self.pan,
-            src_addr=self.id,
-            payload='hello',
-            security_enabled=False,
-            frame_pending=False,
-            ack_request=False,
-            pan_id_compress=False
-        )
-        rand = random.randint(0,50)
-        delay = 0.01*rand
-        await uasyncio.sleep(delay)
-        dwmCom.transmit()
-        await uasyncio.sleep_ms(5)
-        self.led.toggle()
 
     async def receive_times(self, sequence):
         """
@@ -162,36 +137,52 @@ class UWBNode:
         
         return False
     
-    async def handshake_response(self):
+    async def handshake(self, sequence_num):
         """
-        Perform two-way ranging response.
+        handshake to determine what node to range with.
+        
+        Args:
+            pan_id (int): PAN identifier
+            src_addr (int): Source address
+            sequence_num (int): Sequence number
         
         Returns:
             bool: Success status
         """
-        dwmCom.init_ack_timing(ack_time=6)
-        dwmCom.init_auto_ack(auto_ack=False, rx_auth=True)
+        dwmCom.format_message_mac(
+            frame_type=1,
+            seq_num=sequence_num,
+            dest_pan_id=self.pan,
+            dest_addr=0XFFFF,
+            src_pan_id=self.pan,
+            src_addr=self.id,
+            payload='hello',
+            security_enabled=False,
+            frame_pending=False,
+            ack_request=False,
+            pan_id_compress=False
+        )
+
+        self.handshake_success = False
+        self.current_sequence = sequence_num
+
+        dwmCom.transmit()
+        time.sleep_ms(5)
+
+        await self.init()
         dwmCom.set_receive_interrupt()
-
-        self.handshake_init = False
-        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_handshake)
-
+        dwmCom.enable_double_buffering()
+        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
         count = 0
-        while not self.handshake_init and count <= 200:
+        while count <= 150:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1
 
-        if self.handshake_init:
-            #print('handshake init received')
-            await self.init()
-            dwmCom.set_send_interrupt()
-            self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._send_handshake_interrupt)
-            self.handshake_complete = False
-            await uasyncio.sleep_ms(50)
-            await self.send_handshake()
-            return self.handshake_complete
-        
+        if len(self.handshake_results) > 0:
+            print(self.handshake_results)
+            self.handshake_results = []
+            return True
         return False
 
     async def get_distance(self):
@@ -240,21 +231,6 @@ class UWBNode:
                 distance = await self.get_distance()
                 if callback:
                     callback(distance)
-            await uasyncio.sleep_ms(50)
-
-    async def start_handshake(self, callback=None):
-        """
-        Start continuous ranging measurements with optional callback.
-        
-        Args:
-            callback (callable, optional): Function to call with distance measurements
-        """
-        print("looking for handshake")
-        while True:
-            is_response = await self.handshake_response()
-            if is_response == True:
-                print('handshake received and response sent')
-            else: print('handshake not received')
             await uasyncio.sleep_ms(50)
 
     async def start_calibration(self, num_samples=100):

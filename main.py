@@ -1,6 +1,4 @@
-from machine import Pin
-import time
-from tag import UWBTag
+from node import UWBNode
 from random import randint
 import uasyncio
 
@@ -18,18 +16,18 @@ async def main():
     DEST_ADDR = 0x1234
 
     # Create transmitter instance
-    transmitter = UWBTag(PAN_ID, SRC_ADDR)
+    node = UWBNode(PAN_ID, SRC_ADDR)
     
     # Initialize
-    await transmitter.init()
+    await node.init()
     
     # Main loop
     while True:
         sequence_num = randint(0, 255)
         #result = await transmitter.twr(DEST_ADDR, sequence_num)
-        result = await transmitter.handshake(sequence_num)
+        result = await node.handshake(sequence_num)
         print(result)
-        await transmitter.init()
+        await node.init()
         await uasyncio.sleep(2)
 
 uasyncio.run(main())

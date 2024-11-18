@@ -19,10 +19,11 @@ class UWBTag:
         self.rx_time = None
         self.range_sucess = False
         self.times_success = False
-        self.handshake_results = []
+        self.handshake_init = False
+        self.handshake_complete = False
         self.target_addr = None
         self.pan = pan
-        self.src = id
+        self.id = id
 
     async def init(self):
         """
@@ -37,7 +38,7 @@ class UWBTag:
         dwmCom.lde_load()
         dwmCom.init_frame_control(
             pan_id=self.pan,
-            device_address=self.src,
+            device_address=self.id,
             enable_beacon=True,
             enable_data=True,
             enable_ack=True,
@@ -56,18 +57,19 @@ class UWBTag:
             self.range_success = True
             self.led.toggle()
 
-#sort out how to handle tag/node handshake
-    def _handle_handshake_interrupt(self, pin):
-        """Handle interrupt for handshake."""
-        message = dwmCom.read_register(0x11, 18)
-        dwmCom.toggle_buffer()
-        dwmCom.search()
-        message = bytearray(reversed(message))
-        sequence = message[15]
-        target_addr = int.from_bytes(message[7:9], 'big')
-        if sequence == self.current_sequence and target_addr not in self.handshake_results:
-            self.handshake_results.append(hex(target_addr))
-            #self.led.toggle()
+    def _handle_interrupt_handshake(self, pin):
+        """Handle interrupt for two-way handshake response."""
+
+        message = bytearray(dwmCom.read_register_intuitive(0x11, 18))
+
+        self.sequence = message[15]
+
+        self.target_addr = int.from_bytes(message[7:9], 'big')
+
+        self.handshake_init = True
+
+    def _send_handshake_interrupt(self, pin):
+        self.handshake_complete = True
 
     def _handle_times_interrupt(self, pin):
         """Handle interrupt for time data transmission."""
@@ -76,6 +78,27 @@ class UWBTag:
         if sequence == self.current_sequence:
             self.times_success = True
             self.led.toggle()
+
+    async def send_handshake(self):
+        dwmCom.format_message_mac(
+            frame_type=1,
+            seq_num=self.sequence,
+            dest_pan_id=self.pan,
+            dest_addr=self.target_addr,
+            src_pan_id=self.pan,
+            src_addr=self.id,
+            payload='hello',
+            security_enabled=False,
+            frame_pending=False,
+            ack_request=False,
+            pan_id_compress=False
+        )
+        rand = randint(0,50)
+        delay = 0.01*rand
+        await uasyncio.sleep(delay)
+        dwmCom.transmit()
+        await uasyncio.sleep_ms(5)
+        self.led.toggle()
 
     async def send_times(self, tx, rx, dest_addr, sequence_num):
         """
@@ -110,7 +133,7 @@ class UWBTag:
             dest_pan_id=self.pan,
             dest_addr=dest_addr,
             src_pan_id=self.pan,
-            src_addr=self.src,
+            src_addr=self.id,
             payload=message,
             security_enabled=False,
             frame_pending=False,
@@ -146,7 +169,7 @@ class UWBTag:
             dest_pan_id=self.pan,
             dest_addr=dest_addr,
             src_pan_id=self.pan,
-            src_addr=self.src,
+            src_addr=self.id,
             payload='hello',
             security_enabled=False,
             frame_pending=False,
@@ -173,54 +196,53 @@ class UWBTag:
             )
             return time_sent
         return False
-
-    async def handshake(self, sequence_num):
+    
+    async def handshake_response(self):
         """
-        handshake to determine what node to range with.
-        
-        Args:
-            pan_id (int): PAN identifier
-            src_addr (int): Source address
-            sequence_num (int): Sequence number
+        Perform two-way ranging response.
         
         Returns:
             bool: Success status
         """
-        dwmCom.format_message_mac(
-            frame_type=1,
-            seq_num=sequence_num,
-            dest_pan_id=self.pan,
-            dest_addr=0XFFFF,
-            src_pan_id=self.pan,
-            src_addr=self.src,
-            payload='hello',
-            security_enabled=False,
-            frame_pending=False,
-            ack_request=False,
-            pan_id_compress=False
-        )
-
-        self.handshake_success = False
-        self.current_sequence = sequence_num
-
-        dwmCom.transmit()
-        time.sleep_ms(5)
-
-        await self.init()
+        dwmCom.init_ack_timing(ack_time=6)
+        dwmCom.init_auto_ack(auto_ack=False, rx_auth=True)
         dwmCom.set_receive_interrupt()
-        dwmCom.enable_double_buffering()
-        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_handshake_interrupt)
+
+        self.handshake_init = False
+        self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._handle_interrupt_handshake)
+
         count = 0
-        while count <= 150:
+        while not self.handshake_init and count <= 200:
             dwmCom.search()
             await uasyncio.sleep_ms(5)
             count += 1
 
-        if len(self.handshake_results) > 0:
-            print(self.handshake_results)
-            self.handshake_results = []
-            return True
+        if self.handshake_init:
+            #print('handshake init received')
+            await self.init()
+            dwmCom.set_send_interrupt()
+            self.irq_pin.irq(trigger=Pin.IRQ_RISING, handler=self._send_handshake_interrupt)
+            self.handshake_complete = False
+            await uasyncio.sleep_ms(50)
+            await self.send_handshake()
+            return self.handshake_complete
+        
         return False
+    
+    async def start_handshake(self, callback=None):
+        """
+        Start continuous ranging measurements with optional callback.
+        
+        Args:
+            callback (callable, optional): Function to call with distance measurements
+        """
+        print("looking for handshake")
+        while True:
+            is_response = await self.handshake_response()
+            if is_response == True:
+                print('handshake received and response sent')
+            else: print('handshake not received')
+            await uasyncio.sleep_ms(50)
 
 # Example usage:
 async def main():
